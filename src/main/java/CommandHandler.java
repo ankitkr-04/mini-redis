@@ -3,6 +3,7 @@ import java.util.Map;
 import commands.EchoCommand;
 import commands.GetCommand;
 import commands.ICommand;
+import commands.LPushCommand;
 import commands.LRangeCommand;
 import commands.PingCommand;
 import commands.RPushCommand;
@@ -17,7 +18,7 @@ public final class CommandHandler {
     public CommandHandler() {
         commands = Map.of("PING", new PingCommand(), "ECHO", new EchoCommand(), "SET",
                 new SetCommand(), "GET", new GetCommand(), "RPUSH", new RPushCommand(), "LRANGE",
-                new LRangeCommand());
+                new LRangeCommand(), "LPUSH", new LPushCommand());
     }
 
     public ByteBuffer handle(String[] args, DataStore dataStore) {

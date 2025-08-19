@@ -43,8 +43,8 @@ public final class ListStore {
                 store.computeIfAbsent(key, k -> Collections.synchronizedList(new ArrayList<>()));
 
         // Add elements in reverse order to maintain correct sequence
-        for (int i = values.length - 1; i >= 0; i--) {
-            list.add(0, values[i]);
+        for (var v : values) {
+            list.add(0, v);
         }
 
         return list.size();

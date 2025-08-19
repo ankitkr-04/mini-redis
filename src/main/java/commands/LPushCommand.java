@@ -1,0 +1,23 @@
+package commands;
+
+import java.nio.ByteBuffer;
+import java.util.Arrays;
+import resp.RESPFormatter;
+import store.DataStore;
+
+public final class LPushCommand implements ICommand {
+
+    @Override
+    public ByteBuffer execute(String[] args, DataStore dataStore) {
+        String key = args[1];
+        String[] values = Arrays.copyOfRange(args, 2, args.length);
+        int newSize = dataStore.leftPushToList(key, values);
+        return RESPFormatter.integer(newSize);
+    }
+
+    @Override
+    public boolean validateArgs(String[] args) {
+        return args.length >= 3; // "LPUSH" + key + at least one value
+    }
+
+}
