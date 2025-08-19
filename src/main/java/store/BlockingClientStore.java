@@ -18,8 +18,8 @@ public class BlockingClientStore {
      * @param client the client's socket channel
      * @param timeoutMs 0 for indefinite, or milliseconds to wait
      */
-    public void addClient(String key, SocketChannel client, long timeoutMs) {
-        long timeoutEnd = timeoutMs == 0 ? 0 : System.currentTimeMillis() + timeoutMs;
+    public void addClient(String key, SocketChannel client, double timeoutMs) {
+        double timeoutEnd = timeoutMs == 0 ? 0 : ((double)System.currentTimeMillis()) + timeoutMs;
         BlockedClient blockedClient = new BlockedClient(client, timeoutEnd);
         store.computeIfAbsent(key, k -> new ConcurrentLinkedQueue<>()).add(blockedClient);
     }

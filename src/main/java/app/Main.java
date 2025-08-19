@@ -12,6 +12,7 @@ import java.util.Set;
 import command.CommandHandler;
 import resp.RESPParser;
 import store.DataStore;
+import util.TimeoutChecker;
 
 public class Main {
 
@@ -24,6 +25,8 @@ public class Main {
 
     CommandHandler handler = new CommandHandler();
     DataStore dataStore = new DataStore();
+
+    new TimeoutChecker(dataStore).start();
 
     try (ServerSocketChannel serverChannel = ServerSocketChannel.open();
         Selector selector = Selector.open()) {

@@ -10,35 +10,34 @@ import store.DataStore;
 public final class BLPopCommand implements ICommand {
     @Override
     public ByteBuffer execute(String[] args, DataStore dataStore, SocketChannel channel) {
+        String key = args[1];
+        double timeoutSeconds = Double.parseDouble(args[2]);
 
-        var key = args[1];
-        long timeoutSeconds = Long.parseLong(args[2]);
         if (dataStore.getListLength(key) > 0) {
-            // List has element, pop and return immediately
             String value = dataStore.popFromListLeft(key).get();
             return RESPFormatter.array(List.of(key, value));
         } else {
-            // List empty, register client for blocking
-            long timeoutEndMillis =
-                    (timeoutSeconds == 0) ? 0 : System.currentTimeMillis() + timeoutSeconds * 1000;
-            dataStore.addBlockedClient(key, channel, timeoutEndMillis);
+            double timeoutMs = timeoutSeconds * 1000;
+            if (timeoutMs == 0) {
+                dataStore.addBlockedClient(key, channel);
+            } else {
+                dataStore.addBlockedClient(key, channel, timeoutMs);
+            }
             return null;
         }
-
     }
-
 
     @Override
     public boolean validateArgs(String[] args) {
         if (args.length == 3) {
             try {
-                int count = Integer.parseInt(args[2]);
-                return count >= 0; // elementCount must be non-negative
+                double timeout = Double.parseDouble(args[2]);
+                return timeout >= 0;
             } catch (NumberFormatException e) {
-                return false; // invalid integer
+                return false;
             }
         }
-        return false; // wrong number of arguments
+        return false;
     }
 
 

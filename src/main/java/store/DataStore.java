@@ -67,7 +67,7 @@ public final class DataStore {
     }
 
     // --- Blocking client registry operations ---
-    public void addBlockedClient(String key, SocketChannel client, long timeoutEndMillis) {
+    public void addBlockedClient(String key, SocketChannel client, double timeoutEndMillis) {
         blockedClientStore.addClient(key, client, timeoutEndMillis);
     }
 
