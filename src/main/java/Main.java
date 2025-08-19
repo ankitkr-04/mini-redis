@@ -1,46 +1,75 @@
-import java.io.BufferedReader;
 import java.io.IOException;
-import java.io.InputStreamReader;
-import java.net.ServerSocket;
-import java.net.Socket;
+import java.net.InetSocketAddress;
+import java.nio.ByteBuffer;
+import java.nio.channels.SelectionKey;
+import java.nio.channels.Selector;
+import java.nio.channels.ServerSocketChannel;
+import java.nio.channels.SocketChannel;
+import java.util.Set;
 
 public class Main {
   public static void main(String[] args) {
+    final int PORT = 6379;
+    final int BUFFER_CAPACITY = 1_024;
+    boolean listening = true;
+    boolean isBlocking = false;
+
     // You can use print statements as follows for debugging, they'll be visible when running tests.
     System.out.println("Logs from your program will appear here!");
 
-    ServerSocket serverSocket = null;
-    Socket clientSocket = null;
-    int port = 6379;
+
+
     try {
-      serverSocket = new ServerSocket(port);
-      // Since the tester restarts your program quite often, setting SO_REUSEADDR
-      // ensures that we don't run into 'Address already in use' errors
-      serverSocket.setReuseAddress(true);
-      // Wait for connection from client.
-      clientSocket = serverSocket.accept();
-      var outputStream = clientSocket.getOutputStream();
-      var inputStream = clientSocket.getInputStream();
+      ServerSocketChannel serverChannel = ServerSocketChannel.open();
+      serverChannel.configureBlocking(isBlocking);
+      serverChannel.bind(new InetSocketAddress(PORT));
 
-      byte[] buffer = new byte[1024];
-      while(true){
-        int bytesRead = inputStream.read(buffer);
-        if (bytesRead == -1) {
-          break;
+      Selector selector = Selector.open();
+      serverChannel.register(selector, SelectionKey.OP_ACCEPT);
+
+      while (listening) {
+        selector.select();
+        Set<SelectionKey> readyKeys = selector.selectedKeys();
+
+        for (var key : readyKeys) {
+          if (key.isAcceptable()) {
+            // Accept New Connections
+            var newServerChannel = (ServerSocketChannel) key.channel();
+            // Non-blocking clientChnnel
+            var clientChannel = newServerChannel.accept();
+
+            //If client not null, register it
+            if(clientChannel != null){
+              clientChannel.configureBlocking(isBlocking);
+              clientChannel.register(selector, SelectionKey.OP_READ, ByteBuffer.allocate(BUFFER_CAPACITY));
+            }
+
+          } else if (key.isReadable()) {
+            var clientChannel = (SocketChannel) key.channel();
+            ByteBuffer buffer = (ByteBuffer) key.attachment();
+
+            int bytesRead = clientChannel.read(buffer);
+            // Something is in clientChnnel input
+            if(bytesRead > 0){
+              buffer.flip();
+
+              ByteBuffer res = ByteBuffer.wrap("+PONG\r\n".getBytes());
+              clientChannel.write(res);
+              buffer.clear(); 
+            } else if( bytesRead == -1){
+              key.cancel();
+              clientChannel.close();
+            }
+          }
+
         }
-        outputStream.write("+PONG\r\n".getBytes());
-      }
 
+        readyKeys.clear();
+
+
+      }
     } catch (IOException e) {
       System.out.println("IOException: " + e.getMessage());
-    } finally {
-      try {
-        if (clientSocket != null) {
-          clientSocket.close();
-        }
-      } catch (IOException e) {
-        System.out.println("IOException: " + e.getMessage());
-      }
     }
   }
 }
