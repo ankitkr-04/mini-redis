@@ -7,6 +7,8 @@ import java.nio.channels.ServerSocketChannel;
 import java.nio.channels.SocketChannel;
 import java.util.Iterator;
 import java.util.Set;
+import resp.RESPParser;
+import store.DataStore;
 
 public class Main {
 
@@ -15,9 +17,10 @@ public class Main {
   private static final boolean IS_BLOCKING = false;
 
   public static void main(String[] args) {
-    System.out.println("Logs from your program will appear here!");
+    System.out.println("Redis-like server starting on port " + PORT + "...");
 
     CommandHandler handler = new CommandHandler();
+    DataStore dataStore = new DataStore();
 
     try (ServerSocketChannel serverChannel = ServerSocketChannel.open();
         Selector selector = Selector.open()) {
@@ -33,47 +36,54 @@ public class Main {
 
         while (iterator.hasNext()) {
           SelectionKey key = iterator.next();
-          iterator.remove(); 
+          iterator.remove();
 
           if (key.isAcceptable()) {
-            handleAccept(key, selector);
+            acceptConnection(key, selector);
           } else if (key.isReadable()) {
-            handleRead(key, handler);
+            readFromClient(key, handler, dataStore);
           }
         }
       }
 
     } catch (IOException e) {
-      System.out.println("IOException: " + e.getMessage());
+      System.err.println("IOException: " + e.getMessage());
+      e.printStackTrace();
     }
   }
 
-  private static void handleAccept(SelectionKey key, Selector selector) throws IOException {
+  private static void acceptConnection(SelectionKey key, Selector selector) throws IOException {
     ServerSocketChannel serverChannel = (ServerSocketChannel) key.channel();
     SocketChannel clientChannel = serverChannel.accept();
 
     if (clientChannel != null) {
       clientChannel.configureBlocking(IS_BLOCKING);
       clientChannel.register(selector, SelectionKey.OP_READ, ByteBuffer.allocate(BUFFER_CAPACITY));
+      System.out.println("Accepted connection from " + clientChannel.getRemoteAddress());
     }
   }
 
-  private static void handleRead(SelectionKey key, CommandHandler handler) throws IOException {
+  private static void readFromClient(SelectionKey key, CommandHandler handler, DataStore dataStore)
+      throws IOException {
+
     SocketChannel clientChannel = (SocketChannel) key.channel();
     ByteBuffer buffer = (ByteBuffer) key.attachment();
 
     int bytesRead = clientChannel.read(buffer);
-
     if (bytesRead > 0) {
       buffer.flip();
 
       String[] commands = RESPParser.parse(buffer);
-      ByteBuffer response = handler.handle(commands);
+      ByteBuffer response = handler.handle(commands, dataStore);
 
-      clientChannel.write(response);
+      while (response.hasRemaining()) {
+        clientChannel.write(response);
+      }
 
       buffer.clear();
+
     } else if (bytesRead == -1) {
+      System.out.println("Client disconnected: " + clientChannel.getRemoteAddress());
       key.cancel();
       clientChannel.close();
     }

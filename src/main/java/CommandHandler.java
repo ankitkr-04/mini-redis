@@ -1,116 +1,39 @@
 import java.nio.ByteBuffer;
-import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
+import commands.EchoCommand;
+import commands.GetCommand;
+import commands.ICommand;
+import commands.LRangeCommand;
+import commands.PingCommand;
+import commands.RPushCommand;
+import commands.SetCommand;
+import resp.RESPFormatter;
+import store.DataStore;
 
-record ValueWithExpiry(String value, long expiry) {
-    private static final long NO_EXPIRY = -1L;
+public final class CommandHandler {
 
-    public static ValueWithExpiry noExpiry(String val) {
-        return new ValueWithExpiry(val, NO_EXPIRY);
-    }
-}
+    private final Map<String, ICommand> commands;
 
-
-public class CommandHandler {
-
-    private static final String PING_CMD = "PING";
-    private static final String ECHO_CMD = "ECHO";
-    private static final String SET_CMD = "SET";
-    private static final String GET_CMD = "GET";
-    private static final String RPUSH_CMD = "RPUSH";
-
-
-    private static final ByteBuffer PONG_RESPONSE =
-            ByteBuffer.wrap("+PONG\r\n".getBytes(StandardCharsets.UTF_8)).asReadOnlyBuffer();
-    private static final ByteBuffer OK_RESPONSE =
-            ByteBuffer.wrap("+OK\r\n".getBytes(StandardCharsets.UTF_8)).asReadOnlyBuffer();
-    private static final ByteBuffer NULL_RESPONSE =
-            ByteBuffer.wrap("$-1\r\n".getBytes(StandardCharsets.UTF_8)).asReadOnlyBuffer();
-    private static final ByteBuffer UNKNOWN_CMD_ERROR = ByteBuffer
-            .wrap("-ERR unknown command\r\n".getBytes(StandardCharsets.UTF_8)).asReadOnlyBuffer();
-    private static final ByteBuffer WRONG_ARGS_ERROR =
-            ByteBuffer.wrap("-ERR wrong number of arguments\r\n".getBytes(StandardCharsets.UTF_8))
-                    .asReadOnlyBuffer();
-
-    private final Map<String, ValueWithExpiry> store = new ConcurrentHashMap<>();
-    private final Map<String, List<String>> listStore = new ConcurrentHashMap<>();
-
-    // Helper method for bulk strings
-    private ByteBuffer bulkString(String msg) {
-        if (msg == null)
-            return NULL_RESPONSE.duplicate();
-        return ByteBuffer.wrap(
-                ("$" + msg.length() + "\r\n" + msg + "\r\n").getBytes(StandardCharsets.UTF_8));
+    public CommandHandler() {
+        commands = Map.of("PING", new PingCommand(), "ECHO", new EchoCommand(), "SET",
+                new SetCommand(), "GET", new GetCommand(), "RPUSH", new RPushCommand(), "LRANGE",
+                new LRangeCommand());
     }
 
-    private ByteBuffer integerString(int n) {
-        return ByteBuffer.wrap((":" + n + "\r\n").getBytes(StandardCharsets.UTF_8));
-    }
-
-    public ByteBuffer handle(String[] commands) {
-        if (commands.length == 0)
-            return UNKNOWN_CMD_ERROR.duplicate();
-
-        switch (commands[0].toUpperCase()) {
-            case PING_CMD:
-                return PONG_RESPONSE.duplicate();
-
-            case ECHO_CMD:
-                if (commands.length != 2)
-                    return WRONG_ARGS_ERROR.duplicate();
-                return bulkString(commands[1]);
-
-            case SET_CMD:
-                int n = commands.length;
-                if (n == 3) {
-                    store.put(commands[1], ValueWithExpiry.noExpiry(commands[2]));
-                } else if (n == 5 && commands[3].equalsIgnoreCase("PX")) {
-                    long expiryTime = System.currentTimeMillis() + Long.parseLong(commands[4]);
-                    store.put(commands[1], new ValueWithExpiry(commands[2], expiryTime));
-                } else {
-                    return WRONG_ARGS_ERROR.duplicate();
-                }
-                return OK_RESPONSE.duplicate();
-
-            case GET_CMD:
-                if (commands.length != 2)
-                    return WRONG_ARGS_ERROR.duplicate();
-
-                ValueWithExpiry record = store.get(commands[1]);
-                if (record == null)
-                    return NULL_RESPONSE.duplicate();
-
-                long now = System.currentTimeMillis();
-                if (record.expiry() != -1 && now >= record.expiry()) {
-                    store.remove(commands[1]); // remove expired key
-                    return NULL_RESPONSE.duplicate();
-                }
-
-                return bulkString(record.value());
-
-
-            case RPUSH_CMD:
-                if (commands.length <= 2)
-                    return WRONG_ARGS_ERROR.duplicate();
-
-                var list = listStore.computeIfAbsent(commands[1],
-                        k -> Collections.synchronizedList(new ArrayList<>()));
-
-
-                for (int i = 2; i < commands.length; i++) {
-                    list.add(commands[i]);
-                }
-
-                return integerString(list.size());
-
-
-
-            default:
-                return UNKNOWN_CMD_ERROR.duplicate();
+    public ByteBuffer handle(String[] args, DataStore dataStore) {
+        if (args.length == 0) {
+            return RESPFormatter.error("ERR unknown command");
         }
+
+        ICommand command = commands.get(args[0].toUpperCase());
+        if (command == null) {
+            return RESPFormatter.error("ERR unknown command");
+        }
+
+        if (!command.validateArgs(args)) {
+            return RESPFormatter.error("ERR wrong number of arguments");
+        }
+
+        return command.execute(args, dataStore);
     }
 }
