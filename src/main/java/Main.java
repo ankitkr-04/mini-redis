@@ -22,9 +22,12 @@ public class Main {
       var outputStream = clientSocket.getOutputStream();
       var inputStream = clientSocket.getInputStream();
 
-      var reader = new BufferedReader(new InputStreamReader(inputStream));
-
-      while(reader.readLine() != null) {
+      byte[] buffer = new byte[1024];
+      while(true){
+        int bytesRead = inputStream.read(buffer);
+        if (bytesRead == -1) {
+          break;
+        }
         outputStream.write("+PONG\r\n".getBytes());
       }
 
