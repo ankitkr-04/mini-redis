@@ -1,8 +1,8 @@
-package commands.util;
+package command.util;
 
 import java.nio.ByteBuffer;
-import commands.ICommand;
-import responses.StandardResponses;
+import command.ICommand;
+import response.StandardResponses;
 import store.DataStore;
 
 public final class PingCommand implements ICommand {

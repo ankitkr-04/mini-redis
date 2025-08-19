@@ -1,4 +1,4 @@
-package responses;
+package response;
 
 import java.nio.ByteBuffer;
 import java.util.Collections;

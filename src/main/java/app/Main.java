@@ -1,4 +1,5 @@
 package app;
+
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.nio.ByteBuffer;
@@ -8,7 +9,7 @@ import java.nio.channels.ServerSocketChannel;
 import java.nio.channels.SocketChannel;
 import java.util.Iterator;
 import java.util.Set;
-import commands.CommandHandler;
+import command.CommandHandler;
 import resp.RESPParser;
 import store.DataStore;
 
@@ -76,10 +77,12 @@ public class Main {
       buffer.flip();
 
       String[] commands = RESPParser.parse(buffer);
-      ByteBuffer response = handler.handle(commands, dataStore);
+      ByteBuffer response = handler.handle(commands, dataStore, clientChannel);
 
-      while (response.hasRemaining()) {
-        clientChannel.write(response);
+      if (response != null) {
+        while (response.hasRemaining()) {
+          clientChannel.write(response);
+        }
       }
 
       buffer.clear();

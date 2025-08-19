@@ -1,9 +1,9 @@
-package commands.string;
+package command.string;
 
 import java.nio.ByteBuffer;
-import commands.ICommand;
+import command.ICommand;
 import resp.RESPFormatter;
-import responses.StandardResponses;
+import response.StandardResponses;
 import store.DataStore;
 
 public final class GetCommand implements ICommand {

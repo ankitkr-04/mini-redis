@@ -1,11 +1,13 @@
 module redis {
-    exports commands;
-    exports commands.string;
-    exports commands.list;
-    exports commands.util;
+    exports command;
+    exports command.string;
+    exports command.list;
+    exports command.util;
 
     exports store;
     exports resp;
-    exports responses;
-    exports records;
+    exports response;
+    exports record;
+    exports util;
 }
+

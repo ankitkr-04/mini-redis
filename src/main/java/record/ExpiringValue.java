@@ -1,4 +1,4 @@
-package records;
+package record;
 
 public record ExpiringValue(String value, long expiryTime) {
     private static final long NO_EXPIRY = -1L;

@@ -1,9 +1,9 @@
-package commands.string;
+package command.string;
 
 import java.nio.ByteBuffer;
-import commands.ICommand;
-import records.ExpiringValue;
-import responses.StandardResponses;
+import command.ICommand;
+import record.ExpiringValue;
+import response.StandardResponses;
 import store.DataStore;
 
 public final class SetCommand implements ICommand {

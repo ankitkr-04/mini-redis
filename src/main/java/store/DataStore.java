@@ -1,14 +1,18 @@
 package store;
 
+import java.nio.channels.SocketChannel;
 import java.util.List;
 import java.util.Optional;
-import records.ExpiringValue;
+import record.BlockedClient;
+import record.ExpiringValue;
 
 public final class DataStore {
+
     private final KeyValueStore keyValueStore = new KeyValueStore();
     private final ListStore listStore = new ListStore();
+    private final BlockingClientStore blockedClientStore = new BlockingClientStore();
 
-    // Key-Value operations
+    // --- Key-Value operations ---
     public void set(String key, ExpiringValue value) {
         keyValueStore.set(key, value);
     }
@@ -25,7 +29,7 @@ public final class DataStore {
         return keyValueStore.delete(key);
     }
 
-    // List operations
+    // --- List operations ---
     public int pushToList(String key, String... values) {
         return listStore.rightPush(key, values);
     }
@@ -62,7 +66,28 @@ public final class DataStore {
         return listStore.delete(key);
     }
 
-    // Direct access to specialized stores (for commands that need specific functionality)
+    // --- Blocking client registry operations ---
+    public void addBlockedClient(String key, SocketChannel client, long timeoutEndMillis) {
+        blockedClientStore.addClient(key, client, timeoutEndMillis);
+    }
+
+    public void addBlockedClient(String key, SocketChannel client) {
+        blockedClientStore.addClient(key, client);
+    }
+
+    public void removeBlockedClient(String key, SocketChannel client) {
+        blockedClientStore.removeClient(key, client);
+    }
+
+    public BlockedClient popBlockedClient(String key) {
+        return blockedClientStore.pollClient(key);
+    }
+
+    public boolean hasBlockedClients(String key) {
+        return blockedClientStore.hasClients(key);
+    }
+
+    // --- Access specialized stores ---
     public KeyValueStore getKeyValueStore() {
         return keyValueStore;
     }
@@ -71,9 +96,14 @@ public final class DataStore {
         return listStore;
     }
 
-    // Global operations
+    public BlockingClientStore getBlockedClientStore() {
+        return blockedClientStore;
+    }
+
+    // --- Global operations ---
     public void clearAll() {
         keyValueStore.clear();
         listStore.clear();
+        blockedClientStore.clear();
     }
 }
