@@ -1,5 +1,3 @@
-
-
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.nio.ByteBuffer;
@@ -7,77 +5,77 @@ import java.nio.channels.SelectionKey;
 import java.nio.channels.Selector;
 import java.nio.channels.ServerSocketChannel;
 import java.nio.channels.SocketChannel;
+import java.util.Iterator;
 import java.util.Set;
 
 public class Main {
 
-  public static void main(String[] args) {
-    final int PORT = 6379;
-    final int BUFFER_CAPACITY = 1_024;
-    boolean listening = true;
-    boolean isBlocking = false;
+  private static final int PORT = 6379;
+  private static final int BUFFER_CAPACITY = 1_024;
+  private static final boolean IS_BLOCKING = false;
 
-    // You can use print statements as follows for debugging, they'll be visible when running tests.
+  public static void main(String[] args) {
     System.out.println("Logs from your program will appear here!");
 
     CommandHandler handler = new CommandHandler();
 
+    try (ServerSocketChannel serverChannel = ServerSocketChannel.open();
+        Selector selector = Selector.open()) {
 
-
-    try {
-      ServerSocketChannel serverChannel = ServerSocketChannel.open();
-      serverChannel.configureBlocking(isBlocking);
+      serverChannel.configureBlocking(IS_BLOCKING);
       serverChannel.bind(new InetSocketAddress(PORT));
-
-      Selector selector = Selector.open();
       serverChannel.register(selector, SelectionKey.OP_ACCEPT);
 
-      while (listening) {
+      while (true) {
         selector.select();
         Set<SelectionKey> readyKeys = selector.selectedKeys();
+        Iterator<SelectionKey> iterator = readyKeys.iterator();
 
-        for (var key : readyKeys) {
+        while (iterator.hasNext()) {
+          SelectionKey key = iterator.next();
+          iterator.remove(); 
+
           if (key.isAcceptable()) {
-            // Accept New Connections
-            var newServerChannel = (ServerSocketChannel) key.channel();
-            // Non-blocking clientChnnel
-            var clientChannel = newServerChannel.accept();
-
-            // If client not null, register it
-            if (clientChannel != null) {
-              clientChannel.configureBlocking(isBlocking);
-              clientChannel.register(selector, SelectionKey.OP_READ,
-                  ByteBuffer.allocate(BUFFER_CAPACITY));
-            }
-
+            handleAccept(key, selector);
           } else if (key.isReadable()) {
-            var clientChannel = (SocketChannel) key.channel();
-            ByteBuffer buffer = (ByteBuffer) key.attachment();
-
-            int bytesRead = clientChannel.read(buffer);
-            // Something is in clientChnnel input
-            if (bytesRead > 0) {
-              buffer.flip();
-              var strings = RESPParser.parse(buffer);
-
-              var result = handler.handle(strings);
-              clientChannel.write(result);
-
-              buffer.clear();
-            } else if (bytesRead == -1) {
-              key.cancel();
-              clientChannel.close();
-            }
+            handleRead(key, handler);
           }
-
         }
-
-        readyKeys.clear();
-
-
       }
+
     } catch (IOException e) {
       System.out.println("IOException: " + e.getMessage());
+    }
+  }
+
+  private static void handleAccept(SelectionKey key, Selector selector) throws IOException {
+    ServerSocketChannel serverChannel = (ServerSocketChannel) key.channel();
+    SocketChannel clientChannel = serverChannel.accept();
+
+    if (clientChannel != null) {
+      clientChannel.configureBlocking(IS_BLOCKING);
+      clientChannel.register(selector, SelectionKey.OP_READ, ByteBuffer.allocate(BUFFER_CAPACITY));
+    }
+  }
+
+  private static void handleRead(SelectionKey key, CommandHandler handler) throws IOException {
+    SocketChannel clientChannel = (SocketChannel) key.channel();
+    ByteBuffer buffer = (ByteBuffer) key.attachment();
+
+    int bytesRead = clientChannel.read(buffer);
+
+    if (bytesRead > 0) {
+      buffer.flip();
+
+      String[] commands = RESPParser.parse(buffer);
+      ByteBuffer response = handler.handle(commands);
+
+      clientChannel.write(response);
+
+      buffer.clear();
+    } else if (bytesRead == -1) {
+      key.cancel();
+      clientChannel.close();
     }
   }
 }
