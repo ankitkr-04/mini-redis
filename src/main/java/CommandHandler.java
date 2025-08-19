@@ -1,5 +1,8 @@
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -18,6 +21,7 @@ public class CommandHandler {
     private static final String ECHO_CMD = "ECHO";
     private static final String SET_CMD = "SET";
     private static final String GET_CMD = "GET";
+    private static final String RPUSH_CMD = "RPUSH";
 
 
     private static final ByteBuffer PONG_RESPONSE =
@@ -33,6 +37,7 @@ public class CommandHandler {
                     .asReadOnlyBuffer();
 
     private final Map<String, ValueWithExpiry> store = new ConcurrentHashMap<>();
+    private final Map<String, List<String>> listStore = new ConcurrentHashMap<>();
 
     // Helper method for bulk strings
     private ByteBuffer bulkString(String msg) {
@@ -40,6 +45,10 @@ public class CommandHandler {
             return NULL_RESPONSE.duplicate();
         return ByteBuffer.wrap(
                 ("$" + msg.length() + "\r\n" + msg + "\r\n").getBytes(StandardCharsets.UTF_8));
+    }
+
+    private ByteBuffer integerString(int n) {
+        return ByteBuffer.wrap((":" + n + "\r\n").getBytes(StandardCharsets.UTF_8));
     }
 
     public ByteBuffer handle(String[] commands) {
@@ -82,6 +91,23 @@ public class CommandHandler {
                 }
 
                 return bulkString(record.value());
+
+
+            case RPUSH_CMD:
+                if (commands.length <= 2)
+                    return WRONG_ARGS_ERROR.duplicate();
+
+                var list = listStore.computeIfAbsent(commands[1],
+                        k -> Collections.synchronizedList(new ArrayList<>()));
+
+
+                for (int i = 2; i < commands.length; i++) {
+                    list.add(commands[i]);
+                }
+
+                return integerString(list.size());
+
+
 
             default:
                 return UNKNOWN_CMD_ERROR.duplicate();
