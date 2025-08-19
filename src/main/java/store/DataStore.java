@@ -50,6 +50,10 @@ public final class DataStore {
         return listStore.leftPop(key);
     }
 
+    public List<String> popFromListLeft(String key, int elementCount) {
+        return listStore.leftPop(key, elementCount);
+    }
+
     public boolean existsList(String key) {
         return listStore.exists(key);
     }

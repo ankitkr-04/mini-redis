@@ -11,13 +11,32 @@ public final class LPopCommand implements ICommand {
     public ByteBuffer execute(String[] args, DataStore dataStore) {
         var key = args[1];
 
-        var value = dataStore.popFromListLeft(key);
-        return RESPFormatter.bulkString(value.orElse(null));
+        if (args.length == 2) {
+
+            var value = dataStore.popFromListLeft(key);
+            return RESPFormatter.bulkString(value.orElse(null));
+        }
+        int elementCount = Integer.parseInt(args[2]);
+
+        var values = dataStore.popFromListLeft(key, elementCount);
+
+        return RESPFormatter.array(values);
+
     }
 
     @Override
     public boolean validateArgs(String[] args) {
-        return args.length == 2; // "LPOP" + key
+        if (args.length == 2) {
+            return true; // "LPOP key"
+        } else if (args.length == 3) {
+            try {
+                int count = Integer.parseInt(args[2]);
+                return count >= 0; // elementCount must be non-negative
+            } catch (NumberFormatException e) {
+                return false; // invalid integer
+            }
+        }
+        return false; // wrong number of arguments
     }
 
 }

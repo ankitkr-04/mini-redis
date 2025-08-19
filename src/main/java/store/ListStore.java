@@ -128,6 +128,37 @@ public final class ListStore {
         }
     }
 
+    public List<String> leftPop(String key, int elementCount) {
+
+        if (elementCount < 0) {
+            throw new IllegalArgumentException("elementCount cannot be negative: " + elementCount);
+        }
+
+        List<String> list = store.get(key);
+        if (key == null || list == null || list.isEmpty()) {
+            return Collections.emptyList();
+        }
+        List<String> removed = new ArrayList<>();
+
+        int listSize = list.size();
+
+        synchronized (list) {
+            if (listSize < elementCount) {
+                throw new IndexOutOfBoundsException(
+                        "Requested " + elementCount + " elements, but list only has " + listSize);
+            }
+
+
+            for (int i = 0; i < elementCount; i++) {
+                removed.add(list.remove(0));
+            }
+
+        }
+        return removed;
+
+
+    }
+
     /**
      * Checks if a list exists.
      */
