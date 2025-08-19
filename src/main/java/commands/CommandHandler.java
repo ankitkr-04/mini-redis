@@ -3,6 +3,7 @@ package commands;
 import java.nio.ByteBuffer;
 import java.util.Map;
 import commands.list.LLenCommand;
+import commands.list.LPopCommand;
 import commands.list.LPushCommand;
 import commands.list.LRangeCommand;
 import commands.list.RPushCommand;
@@ -20,7 +21,8 @@ public final class CommandHandler {
     public CommandHandler() {
         commands = Map.of("PING", new PingCommand(), "ECHO", new EchoCommand(), "SET",
                 new SetCommand(), "GET", new GetCommand(), "RPUSH", new RPushCommand(), "LRANGE",
-                new LRangeCommand(), "LPUSH", new LPushCommand(), "LLEN", new LLenCommand());
+                new LRangeCommand(), "LPUSH", new LPushCommand(), "LLEN", new LLenCommand(), "LPOP",
+                new LPopCommand());
     }
 
     public ByteBuffer handle(String[] args, DataStore dataStore) {
