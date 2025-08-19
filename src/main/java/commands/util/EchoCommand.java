@@ -1,6 +1,7 @@
-package commands;
+package commands.util;
 
 import java.nio.ByteBuffer;
+import commands.ICommand;
 import resp.RESPFormatter;
 import store.DataStore;
 

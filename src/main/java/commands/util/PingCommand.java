@@ -1,6 +1,7 @@
-package commands;
+package commands.util;
 
 import java.nio.ByteBuffer;
+import commands.ICommand;
 import responses.StandardResponses;
 import store.DataStore;
 
