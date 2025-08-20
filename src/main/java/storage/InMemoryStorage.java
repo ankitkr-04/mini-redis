@@ -4,6 +4,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
+import common.ValidationUtil;
 import storage.expiry.ExpiryPolicy;
 import storage.interfaces.StorageEngine;
 import storage.types.ListValue;
@@ -188,10 +189,45 @@ public final class InMemoryStorage implements StorageEngine {
         String entryId;
         if ("*".equals(id)) {
             long timestamp = System.currentTimeMillis();
-            // Add a sequence to avoid collisions for same timestamp
-            long seq = streamValue.value().size() + 1L;
+            long seq = 0L;
+
+            Optional<String> lastIdOpt = getLastStreamId(key);
+            if (lastIdOpt.isPresent()) {
+                String lastId = lastIdOpt.get();
+                String[] parts = lastId.split("-");
+                long lastMs = Long.parseLong(parts[0]);
+                long lastSeq = Long.parseLong(parts[1]);
+
+                if (timestamp < lastMs) {
+                    // Redis rule: can't go back in time, bump to lastMs
+                    timestamp = lastMs;
+                    seq = lastSeq + 1;
+                }
+            }
             entryId = timestamp + "-" + seq;
+
         } else {
+
+            if ("0-0".equals(id)) {
+                throw new IllegalArgumentException(
+                        "The ID specified in XADD must be greater than 0-0");
+            }
+            if (!ValidationUtil.isValidStreamId(id)) {
+                throw new IllegalArgumentException("Invalid stream ID format");
+            }
+
+            Optional<String> lastIdOpt = getLastStreamId(key);
+            if (lastIdOpt.isPresent()
+                    && ValidationUtil.compareStreamIds(id, lastIdOpt.get()) <= 0) {
+                throw new IllegalArgumentException(
+                        "The ID specified in XADD is equal or smaller than the target stream top item");
+            }
+
+            if (streamValue.value().containsKey(id)) {
+                throw new IllegalArgumentException(
+                        "The ID specified in XADD is equal or smaller than the target stream top item");
+            }
+
             entryId = id;
         }
 
@@ -201,6 +237,16 @@ public final class InMemoryStorage implements StorageEngine {
 
         return entryId;
     }
+
+    @Override
+    public Optional<String> getLastStreamId(String key) {
+        StoredValue<?> value = store.get(key);
+        if (value instanceof StreamValue sv && !sv.value().isEmpty()) {
+            return Optional.of(sv.value().lastKey());
+        }
+        return Optional.empty();
+    }
+
 
     @Override
     public boolean exists(String key) {
