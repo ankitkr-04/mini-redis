@@ -35,27 +35,17 @@ public class AddStreamCommand implements Command {
 
     @Override
     public boolean validate(CommandArgs args) {
-        // must have: XADD key id field value [field value ...]
+        // Must have: XADD key id field value [field value ...]
         if (args.argCount() < 4)
             return false;
         if ((args.argCount() - 3) % 2 != 0)
             return false;
 
-        // ID format check (syntax only)
+        // Basic ID syntax check
         String id = args.arg(2);
-        if (!id.equals("*")) {
-            String[] parts = id.split("-");
-            if (parts.length != 2)
-                return false;
-
-            try {
-                Long.parseLong(parts[0]);
-                Long.parseLong(parts[1]);
-            } catch (NumberFormatException e) {
-                return false;
-            }
+        if (id.equals("*") || id.endsWith("-*") || id.matches("\\d+-\\d+")) {
+            return true;
         }
-
-        return true;
+        return false;
     }
 }

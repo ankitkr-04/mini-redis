@@ -3,6 +3,7 @@ package storage.engines;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentSkipListMap;
+import common.ErrorMessage;
 import common.ValidationUtil;
 import storage.expiry.ExpiryPolicy;
 import storage.interfaces.StreamStorage;
@@ -68,30 +69,41 @@ public class StreamStorageEngine implements StreamStorage {
 
     private String generateTimestampId(String key, String id) {
         String[] parts = id.split("-");
-        if (parts.length != 2 || !parts[1].equals("*")) {
-            throw new IllegalArgumentException("Invalid stream ID format");
+        if (parts.length != 2 || !"*".equals(parts[1])) {
+            throw new IllegalArgumentException(ErrorMessage.Stream.INVALID_STREAM_ID_FORMAT);
         }
 
         long timestamp;
         try {
             timestamp = Long.parseLong(parts[0]);
         } catch (NumberFormatException e) {
-            throw new IllegalArgumentException("Invalid stream ID format");
+            throw new IllegalArgumentException(ErrorMessage.Stream.INVALID_STREAM_ID_FORMAT);
         }
 
-        long seq = (timestamp == 0) ? 1 : 0;
-
         Optional<String> lastIdOpt = getLastStreamId(key);
+        long seq = 0L;
         if (lastIdOpt.isPresent()) {
             String[] lastParts = lastIdOpt.get().split("-");
             long lastMs = Long.parseLong(lastParts[0]);
             long lastSeq = Long.parseLong(lastParts[1]);
 
-            if (lastMs == timestamp)
-                seq = lastSeq + 1;
-            else if (timestamp < lastMs)
-                throw new IllegalArgumentException(
-                        "The ID specified in XADD is equal or smaller than the target stream top item");
+            if (timestamp == 0) {
+                if (lastMs == 0) {
+                    seq = lastSeq + 1;
+                } else {
+                    throw new IllegalArgumentException(
+                            ErrorMessage.XAdd.ID_EQUAL_OR_SMALLER_THAN_LAST);
+                }
+            } else {
+                if (lastMs == timestamp) {
+                    seq = lastSeq + 1;
+                } else if (timestamp < lastMs) {
+                    throw new IllegalArgumentException(
+                            ErrorMessage.XAdd.ID_EQUAL_OR_SMALLER_THAN_LAST);
+                }
+            }
+        } else if (timestamp == 0) {
+            seq = 1;
         }
 
         return timestamp + "-" + seq;
@@ -99,18 +111,17 @@ public class StreamStorageEngine implements StreamStorage {
 
     private String validateExplicitId(String key, String id, StreamValue streamValue) {
         if ("0-0".equals(id))
-            throw new IllegalArgumentException("The ID specified in XADD must be greater than 0-0");
+            throw new IllegalArgumentException(ErrorMessage.XAdd.ID_MUST_BE_GREATER_THAN_0_0);
 
         if (!ValidationUtil.isValidStreamId(id))
-            throw new IllegalArgumentException("Invalid stream ID format");
+            throw new IllegalArgumentException(ErrorMessage.Stream.INVALID_STREAM_ID_FORMAT);
 
         Optional<String> lastIdOpt = getLastStreamId(key);
         if (lastIdOpt.isPresent() && ValidationUtil.compareStreamIds(id, lastIdOpt.get()) <= 0)
-            throw new IllegalArgumentException(
-                    "The ID specified in XADD is equal or smaller than the target stream top item");
+            throw new IllegalArgumentException(ErrorMessage.XAdd.ID_EQUAL_OR_SMALLER_THAN_LAST);
 
         if (streamValue.value().containsKey(id))
-            throw new IllegalArgumentException("The ID specified in XADD already exists");
+            throw new IllegalArgumentException(ErrorMessage.XAdd.ID_ALREADY_EXISTS);
 
         return id;
     }

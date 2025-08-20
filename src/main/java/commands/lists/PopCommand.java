@@ -4,6 +4,7 @@ import java.util.List;
 import commands.Command;
 import commands.CommandArgs;
 import commands.CommandResult;
+import common.ErrorMessage;
 import common.ValidationUtil;
 import server.protocol.ResponseWriter;
 import storage.interfaces.StorageEngine;
@@ -25,7 +26,7 @@ public final class PopCommand implements Command {
                 case "LPOP" -> storage.leftPop(key);
                 case "RPOP" -> storage.rightPop(key);
                 default -> throw new IllegalArgumentException(
-                        "Unsupported operation: " + operation);
+                        String.format(ErrorMessage.Command.UNSUPPORTED_OPERATION, operation));
             };
             return new CommandResult.Success(ResponseWriter.bulkString(value.orElse(null)));
         } else {
@@ -35,7 +36,7 @@ public final class PopCommand implements Command {
                 case "LPOP" -> storage.leftPop(key, count);
                 case "RPOP" -> storage.rightPop(key, count);
                 default -> throw new IllegalArgumentException(
-                        "Unsupported operation: " + operation);
+                        String.format(ErrorMessage.Command.UNSUPPORTED_OPERATION, operation));
             };
             return new CommandResult.Success(ResponseWriter.array(values));
         }

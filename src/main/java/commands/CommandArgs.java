@@ -3,6 +3,7 @@ package commands;
 import java.nio.channels.SocketChannel;
 import java.util.HashMap;
 import java.util.Map;
+import common.ErrorMessage;
 
 public record CommandArgs(String operation, String[] rawArgs, SocketChannel clientChannel) {
 
@@ -33,7 +34,7 @@ public record CommandArgs(String operation, String[] rawArgs, SocketChannel clie
 
         // must be pairs
         if (((rawArgs.length - startIndex) % 2) != 0) {
-            throw new IllegalArgumentException("Field-value pairs are incomplete");
+            throw new IllegalArgumentException(ErrorMessage.Command.FIELD_VALUE_INCOMPLETE);
         }
 
         for (int i = startIndex; i < rawArgs.length; i += 2) {

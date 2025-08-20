@@ -3,6 +3,7 @@ package storage.engines;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import common.ErrorMessage;
 import storage.interfaces.ListStorage;
 import storage.types.ListValue;
 import storage.types.StoredValue;
@@ -112,7 +113,7 @@ public class ListStorageEngine implements ListStorage {
                 yield result;
             }
             case ListValue(var list, var _) -> throw new IndexOutOfBoundsException(
-                    "List has " + list.length() + " elements, requested " + count);
+                    String.format(ErrorMessage.List.COUNT_EXCEEDS_LENGTH, count, list.length()));
             case null -> List.of();
             default -> List.of();
         };
@@ -132,7 +133,7 @@ public class ListStorageEngine implements ListStorage {
                 yield result;
             }
             case ListValue(var list, var _) -> throw new IndexOutOfBoundsException(
-                    "List has " + list.length() + " elements, requested " + count);
+                    String.format(ErrorMessage.List.COUNT_EXCEEDS_LENGTH, count, list.length()));
             case null -> List.of();
             default -> List.of();
         };

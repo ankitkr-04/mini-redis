@@ -5,6 +5,7 @@ import commands.Command;
 import commands.CommandArgs;
 import commands.CommandRegistry;
 import commands.CommandResult;
+import common.ErrorMessage;
 import storage.interfaces.StorageEngine;
 
 public final class CommandDispatcher {
@@ -18,21 +19,22 @@ public final class CommandDispatcher {
 
     public ByteBuffer dispatch(String[] rawArgs, java.nio.channels.SocketChannel clientChannel) {
         if (rawArgs == null || rawArgs.length == 0) {
-            return ResponseWriter.error("unknown command");
+            return ResponseWriter.error(ErrorMessage.Command.UNKNOWN_COMMAND);
         }
 
         String commandName = rawArgs[0].toUpperCase();
         Command command = registry.getCommand(commandName);
 
         if (command == null) {
-            return ResponseWriter.error("unknown command '" + commandName + "'");
+            return ResponseWriter.error(
+                    String.format(ErrorMessage.Command.UNKNOWN_COMMAND_WITH_NAME, commandName));
         }
 
         CommandArgs args = new CommandArgs(commandName, rawArgs, clientChannel);
 
         if (!command.validate(args)) {
             return ResponseWriter
-                    .error("wrong number of arguments for '" + commandName + "' command");
+                    .error(String.format(ErrorMessage.Command.WRONG_ARG_COUNT, commandName));
         }
 
         CommandResult result = command.execute(args, storage);
