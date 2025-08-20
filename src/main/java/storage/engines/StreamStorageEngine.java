@@ -20,20 +20,14 @@ public class StreamStorageEngine implements StreamStorage {
     @Override
     public String addStreamEntry(String key, String id, Map<String, String> fields,
             ExpiryPolicy expiry) {
-        // Create or get existing StreamValue
         StreamValue streamValue = (StreamValue) store.compute(key, (k, existing) -> {
-            if (existing instanceof StreamValue sv && !sv.isExpired()) {
+            if (existing instanceof StreamValue sv && !sv.isExpired())
                 return sv;
-            }
             return new StreamValue(new ConcurrentSkipListMap<>(), expiry);
         });
 
         String entryId = generateOrValidateId(key, id, streamValue);
-
-        // Create entry and put into stream
-        StreamEntry entry = new StreamEntry(entryId, fields);
-        streamValue.value().put(entryId, entry);
-
+        streamValue.value().put(entryId, new StreamEntry(entryId, fields));
         return entryId;
     }
 
@@ -60,8 +54,7 @@ public class StreamStorageEngine implements StreamStorage {
 
         Optional<String> lastIdOpt = getLastStreamId(key);
         if (lastIdOpt.isPresent()) {
-            String lastId = lastIdOpt.get();
-            String[] parts = lastId.split("-");
+            String[] parts = lastIdOpt.get().split("-");
             long lastMs = Long.parseLong(parts[0]);
             long lastSeq = Long.parseLong(parts[1]);
 
@@ -70,7 +63,6 @@ public class StreamStorageEngine implements StreamStorage {
                 seq = lastSeq + 1;
             }
         }
-
         return timestamp + "-" + seq;
     }
 
@@ -80,54 +72,45 @@ public class StreamStorageEngine implements StreamStorage {
             throw new IllegalArgumentException("Invalid stream ID format");
         }
 
+        long timestamp;
         try {
-            long timestamp = Long.parseLong(parts[0]);
-            long seq = (timestamp == 0) ? 1 : 0; // Default seq: 1 for 0-*, 0 otherwise
-
-            // Find last sequence number for this timestamp
-            Optional<String> lastIdOpt = getLastStreamId(key);
-            if (lastIdOpt.isPresent()) {
-                String lastId = lastIdOpt.get();
-                String[] lastParts = lastId.split("-");
-                long lastMs = Long.parseLong(lastParts[0]);
-                long lastSeq = Long.parseLong(lastParts[1]);
-
-                if (lastMs == timestamp) {
-                    seq = lastSeq + 1; // Increment sequence for same timestamp
-                } else if (timestamp < lastMs) {
-                    throw new IllegalArgumentException(
-                            "The ID specified in XADD is equal or smaller than the target stream top item");
-                }
-            }
-
-            return timestamp + "-" + seq;
+            timestamp = Long.parseLong(parts[0]);
         } catch (NumberFormatException e) {
             throw new IllegalArgumentException("Invalid stream ID format");
         }
+
+        long seq = (timestamp == 0) ? 1 : 0;
+
+        Optional<String> lastIdOpt = getLastStreamId(key);
+        if (lastIdOpt.isPresent()) {
+            String[] lastParts = lastIdOpt.get().split("-");
+            long lastMs = Long.parseLong(lastParts[0]);
+            long lastSeq = Long.parseLong(lastParts[1]);
+
+            if (lastMs == timestamp)
+                seq = lastSeq + 1;
+            else if (timestamp < lastMs)
+                throw new IllegalArgumentException(
+                        "The ID specified in XADD is equal or smaller than the target stream top item");
+        }
+
+        return timestamp + "-" + seq;
     }
 
     private String validateExplicitId(String key, String id, StreamValue streamValue) {
-        // First check if ID is 0-0
-        if ("0-0".equals(id)) {
+        if ("0-0".equals(id))
             throw new IllegalArgumentException("The ID specified in XADD must be greater than 0-0");
-        }
 
-        // Validate ID format
-        if (!ValidationUtil.isValidStreamId(id)) {
+        if (!ValidationUtil.isValidStreamId(id))
             throw new IllegalArgumentException("Invalid stream ID format");
-        }
 
-        // Check if ID is greater than the last ID - THIS MUST COME BEFORE DUPLICATE CHECK
         Optional<String> lastIdOpt = getLastStreamId(key);
-        if (lastIdOpt.isPresent() && ValidationUtil.compareStreamIds(id, lastIdOpt.get()) <= 0) {
+        if (lastIdOpt.isPresent() && ValidationUtil.compareStreamIds(id, lastIdOpt.get()) <= 0)
             throw new IllegalArgumentException(
                     "The ID specified in XADD is equal or smaller than the target stream top item");
-        }
 
-        // Only after checking ordering, check for duplicates
-        if (streamValue.value().containsKey(id)) {
+        if (streamValue.value().containsKey(id))
             throw new IllegalArgumentException("The ID specified in XADD already exists");
-        }
 
         return id;
     }

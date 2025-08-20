@@ -25,7 +25,6 @@ public final class ValidationUtil {
         return args != null && args.length >= minCount;
     }
 
-
     public static boolean isValidStreamId(String id) {
         if ("*".equals(id))
             return true;
@@ -52,6 +51,4 @@ public final class ValidationUtil {
         long s2 = Long.parseLong(p2[1]);
         return Long.compare(s1, s2);
     }
-
-
 }
