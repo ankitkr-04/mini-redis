@@ -23,6 +23,10 @@ public final class CommandRegistry {
         commands.put(command.name().toUpperCase(), command);
     }
 
+    public void register(String name, Command baseCommand) {
+        commands.put(name.toUpperCase(), new CommandAdapter(name, baseCommand));
+    }
+
     public Command getCommand(String name) {
         return commands.get(name.toUpperCase());
     }
@@ -39,85 +43,48 @@ public final class CommandRegistry {
         registry.register(new GetCommand());
         registry.register(new SetCommand());
 
-        // List commands
+        // List commands with shared implementations
         var pushCommand = new PushCommand(blockingManager);
-        registry.register(new Command() {
-            @Override
-            public String name() {
-                return "LPUSH";
-            }
-
-            @Override
-            public CommandResult execute(CommandArgs args, StorageEngine storage) {
-                return pushCommand.execute(args, storage);
-            }
-
-            @Override
-            public boolean validate(CommandArgs args) {
-                return pushCommand.validate(args);
-            }
-        });
-
-        registry.register(new Command() {
-            @Override
-            public String name() {
-                return "RPUSH";
-            }
-
-            @Override
-            public CommandResult execute(CommandArgs args, StorageEngine storage) {
-                return pushCommand.execute(args, storage);
-            }
-
-            @Override
-            public boolean validate(CommandArgs args) {
-                return pushCommand.validate(args);
-            }
-        });
+        registry.register("LPUSH", pushCommand);
+        registry.register("RPUSH", pushCommand);
 
         var popCommand = new PopCommand();
-        registry.register(new Command() {
-            @Override
-            public String name() {
-                return "LPOP";
-            }
-
-            @Override
-            public CommandResult execute(CommandArgs args, StorageEngine storage) {
-                return popCommand.execute(args, storage);
-            }
-
-            @Override
-            public boolean validate(CommandArgs args) {
-                return popCommand.validate(args);
-            }
-        });
-
-        registry.register(new Command() {
-            @Override
-            public String name() {
-                return "RPOP";
-            }
-
-            @Override
-            public CommandResult execute(CommandArgs args, StorageEngine storage) {
-                return popCommand.execute(args, storage);
-            }
-
-            @Override
-            public boolean validate(CommandArgs args) {
-                return popCommand.validate(args);
-            }
-        });
+        registry.register("LPOP", popCommand);
+        registry.register("RPOP", popCommand);
 
         registry.register(new RangeCommand());
         registry.register(new LengthCommand());
         registry.register(new BlockingPopCommand(blockingManager));
 
-
         // Stream commands
         registry.register(new AddStreamCommand());
+
         return registry;
     }
 
+    // Adapter to wrap commands with different names
+    private static class CommandAdapter implements Command {
+        private final String name;
+        private final Command delegate;
+
+        public CommandAdapter(String name, Command delegate) {
+            this.name = name;
+            this.delegate = delegate;
+        }
+
+        @Override
+        public String name() {
+            return name;
+        }
+
+        @Override
+        public CommandResult execute(CommandArgs args, StorageEngine storage) {
+            return delegate.execute(args, storage);
+        }
+
+        @Override
+        public boolean validate(CommandArgs args) {
+            return delegate.validate(args);
+        }
+    }
 }

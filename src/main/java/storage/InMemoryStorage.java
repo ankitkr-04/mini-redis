@@ -4,250 +4,92 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
-import common.ValidationUtil;
+import storage.engines.ListStorageEngine;
+import storage.engines.StreamStorageEngine;
+import storage.engines.StringStorageEngine;
 import storage.expiry.ExpiryPolicy;
 import storage.interfaces.StorageEngine;
-import storage.types.ListValue;
 import storage.types.StoredValue;
-import storage.types.StringValue;
 import storage.types.ValueType;
-import storage.types.streams.StreamEntry;
-import storage.types.streams.StreamValue;
 
 public final class InMemoryStorage implements StorageEngine {
-    private final Map<String, StoredValue<?>> store = new ConcurrentHashMap<>();
 
+    private final Map<String, StoredValue<?>> store = new ConcurrentHashMap<>();
+    private final StringStorageEngine stringEngine;
+    private final ListStorageEngine listEngine;
+    private final StreamStorageEngine streamEngine;
+
+    public InMemoryStorage() {
+        this.stringEngine = new StringStorageEngine(store);
+        this.listEngine = new ListStorageEngine(store);
+        this.streamEngine = new StreamStorageEngine(store);
+    }
+
+    // String operations - delegate to string engine
     @Override
     public void setString(String key, String value, ExpiryPolicy expiry) {
-        store.put(key, StringValue.of(value, expiry));
+        stringEngine.setString(key, value, expiry);
     }
 
     @Override
     public Optional<String> getString(String key) {
-        return switch (getValidValue(key)) {
-            case StringValue(var value, var _) -> Optional.of(value);
-            case null -> Optional.empty();
-            default -> Optional.empty(); // Wrong type
-        };
+        return stringEngine.getString(key);
     }
 
+    // List operations - delegate to list engine
     @Override
     public int leftPush(String key, String... values) {
-        if (values.length == 0)
-            return getListLength(key);
-
-        var result = store.compute(key, (k, existing) -> {
-            return switch (existing) {
-                case null -> {
-                    var list = ListValue.empty();
-                    list.value().pushLeft(values);
-                    yield list;
-                }
-                case ListValue listVal when !listVal.isExpired() -> {
-                    listVal.value().pushLeft(values);
-                    yield listVal;
-                }
-                default -> {
-                    // Create new list (expired or wrong type)
-                    var list = ListValue.empty();
-                    list.value().pushLeft(values);
-                    yield list;
-                }
-            };
-        });
-
-        return ((ListValue) result).size();
+        return listEngine.leftPush(key, values);
     }
 
     @Override
     public int rightPush(String key, String... values) {
-        if (values.length == 0)
-            return getListLength(key);
-
-        var result = store.compute(key, (k, existing) -> {
-            return switch (existing) {
-                case null -> {
-                    var list = ListValue.empty();
-                    list.value().pushRight(values);
-                    yield list;
-                }
-                case ListValue listVal when !listVal.isExpired() -> {
-                    listVal.value().pushRight(values);
-                    yield listVal;
-                }
-                default -> {
-                    var list = ListValue.empty();
-                    list.value().pushRight(values);
-                    yield list;
-                }
-            };
-        });
-
-        return ((ListValue) result).size();
+        return listEngine.rightPush(key, values);
     }
 
     @Override
     public Optional<String> leftPop(String key) {
-        return switch (getValidValue(key)) {
-            case ListValue(var list, var _) when list.length() > 0 -> {
-                String result = list.popLeft();
-                if (list.length() == 0) {
-                    store.remove(key); // Clean up empty list
-                }
-                yield Optional.ofNullable(result);
-            }
-            case null -> Optional.empty();
-            default -> Optional.empty();
-        };
+        return listEngine.leftPop(key);
     }
 
     @Override
     public Optional<String> rightPop(String key) {
-        return switch (getValidValue(key)) {
-            case ListValue(var list, var _) when list.length() > 0 -> {
-                String result = list.popRight();
-                if (list.length() == 0) {
-                    store.remove(key);
-                }
-                yield Optional.ofNullable(result);
-            }
-            case null -> Optional.empty();
-            default -> Optional.empty();
-        };
+        return listEngine.rightPop(key);
     }
 
     @Override
     public List<String> leftPop(String key, int count) {
-        if (count <= 0)
-            return List.of();
-
-        return switch (getValidValue(key)) {
-            case ListValue(var list, var _) when list.length() >= count -> {
-                List<String> result = list.popLeft(count);
-                if (list.length() == 0) {
-                    store.remove(key);
-                }
-                yield result;
-            }
-            case ListValue(var list, var _) -> throw new IndexOutOfBoundsException(
-                    "List has " + list.length() + " elements, requested " + count);
-            case null -> List.of();
-            default -> List.of();
-        };
+        return listEngine.leftPop(key, count);
     }
 
     @Override
     public List<String> rightPop(String key, int count) {
-        if (count <= 0)
-            return List.of();
-
-        return switch (getValidValue(key)) {
-            case ListValue(var list, var _) when list.length() >= count -> {
-                List<String> result = list.popRight(count);
-                if (list.length() == 0) {
-                    store.remove(key);
-                }
-                yield result;
-            }
-            case ListValue(var list, var _) -> throw new IndexOutOfBoundsException(
-                    "List has " + list.length() + " elements, requested " + count);
-            case null -> List.of();
-            default -> List.of();
-        };
+        return listEngine.rightPop(key, count);
     }
 
     @Override
     public List<String> getListRange(String key, int start, int end) {
-        return switch (getValidValue(key)) {
-            case ListValue(var list, var _) -> list.range(start, end);
-            case null -> List.of();
-            default -> List.of();
-        };
+        return listEngine.getListRange(key, start, end);
     }
 
     @Override
     public int getListLength(String key) {
-        return switch (getValidValue(key)) {
-            case ListValue(var list, var _) -> list.length();
-            case null -> 0;
-            default -> 0;
-        };
+        return listEngine.getListLength(key);
     }
 
-    // Streams
+    // Stream operations - delegate to stream engine
     @Override
     public String addStreamEntry(String key, String id, Map<String, String> fields,
             ExpiryPolicy expiry) {
-        // Create or get existing StreamValue
-        StreamValue streamValue = (StreamValue) store.compute(key, (k, existing) -> {
-            StreamValue sv = (existing instanceof StreamValue s) ? s
-                    : new StreamValue(new java.util.concurrent.ConcurrentSkipListMap<>(), expiry);
-            return sv;
-        });
-
-        // Handle auto-ID if user passed "*"
-        String entryId;
-        if ("*".equals(id)) {
-            long timestamp = System.currentTimeMillis();
-            long seq = 0L;
-
-            Optional<String> lastIdOpt = getLastStreamId(key);
-            if (lastIdOpt.isPresent()) {
-                String lastId = lastIdOpt.get();
-                String[] parts = lastId.split("-");
-                long lastMs = Long.parseLong(parts[0]);
-                long lastSeq = Long.parseLong(parts[1]);
-
-                if (timestamp < lastMs) {
-                    // Redis rule: can't go back in time, bump to lastMs
-                    timestamp = lastMs;
-                    seq = lastSeq + 1;
-                }
-            }
-            entryId = timestamp + "-" + seq;
-
-        } else {
-
-            if ("0-0".equals(id)) {
-                throw new IllegalArgumentException(
-                        "The ID specified in XADD must be greater than 0-0");
-            }
-            if (!ValidationUtil.isValidStreamId(id)) {
-                throw new IllegalArgumentException("Invalid stream ID format");
-            }
-
-            Optional<String> lastIdOpt = getLastStreamId(key);
-            if (lastIdOpt.isPresent()
-                    && ValidationUtil.compareStreamIds(id, lastIdOpt.get()) <= 0) {
-                throw new IllegalArgumentException(
-                        "The ID specified in XADD is equal or smaller than the target stream top item");
-            }
-
-            if (streamValue.value().containsKey(id)) {
-                throw new IllegalArgumentException(
-                        "The ID specified in XADD is equal or smaller than the target stream top item");
-            }
-
-            entryId = id;
-        }
-
-        // Create entry and put into stream
-        StreamEntry entry = new StreamEntry(entryId, fields);
-        streamValue.value().put(entryId, entry);
-
-        return entryId;
+        return streamEngine.addStreamEntry(key, id, fields, expiry);
     }
 
     @Override
     public Optional<String> getLastStreamId(String key) {
-        StoredValue<?> value = store.get(key);
-        if (value instanceof StreamValue sv && !sv.value().isEmpty()) {
-            return Optional.of(sv.value().lastKey());
-        }
-        return Optional.empty();
+        return streamEngine.getLastStreamId(key);
     }
 
-
+    // General operations
     @Override
     public boolean exists(String key) {
         return getValidValue(key) != null;
@@ -271,21 +113,16 @@ public final class InMemoryStorage implements StorageEngine {
 
     @Override
     public void cleanup() {
-        // Remove expired keys lazily
         store.entrySet().removeIf(entry -> entry.getValue().isExpired());
     }
 
-    /**
-     * Gets a value if it exists and hasn't expired
-     */
     private StoredValue<?> getValidValue(String key) {
         StoredValue<?> value = store.get(key);
         if (value != null && value.isExpired()) {
-            store.remove(key); // Lazy cleanup
+            store.remove(key);
             return null;
         }
         return value;
     }
-
 
 }
