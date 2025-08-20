@@ -1,210 +1,130 @@
 package store;
 
-import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
+import util.QuickList;
 
 public final class ListStore {
-    private final Map<String, List<String>> store = new ConcurrentHashMap<>();
+    private final Map<String, QuickList<String>> store = new ConcurrentHashMap<>();
 
-    /**
-     * Pushes elements to the right (end) of a list. Creates the list if it doesn't exist.
-     */
+    /** Push elements to the right (end). */
     public int rightPush(String key, String... values) {
-        if (key == null) {
-            throw new IllegalArgumentException("Key cannot be null");
-        }
-        if (values == null || values.length == 0) {
-            throw new IllegalArgumentException("Values cannot be null or empty");
-        }
-
-        List<String> list =
-                store.computeIfAbsent(key, k -> Collections.synchronizedList(new ArrayList<>()));
-
-        Collections.addAll(list, values);
-        return list.size();
+        validateKeyAndValues(key, values);
+        QuickList<String> list = store.computeIfAbsent(key, k -> new QuickList<>());
+        list.pushRight(values);
+        return list.length();
     }
 
-    /**
-     * Pushes elements to the left (beginning) of a list. Creates the list if it doesn't exist.
-     */
+    /** Push elements to the left (beginning). */
     public int leftPush(String key, String... values) {
-        if (key == null) {
-            throw new IllegalArgumentException("Key cannot be null");
-        }
-        if (values == null || values.length == 0) {
-            throw new IllegalArgumentException("Values cannot be null or empty");
-        }
-
-        List<String> list =
-                store.computeIfAbsent(key, k -> Collections.synchronizedList(new ArrayList<>()));
-
-        // Add elements in reverse order to maintain correct sequence
-        for (var v : values) {
-            list.add(0, v);
-        }
-
-        return list.size();
+        validateKeyAndValues(key, values);
+        QuickList<String> list = store.computeIfAbsent(key, k -> new QuickList<>());
+        list.pushLeft(values);
+        return list.length();
     }
 
-    /**
-     * Gets a range of elements from a list. Supports negative indices (-1 is last element, -2
-     * second to last, etc.)
-     */
-    public List<String> getRange(String key, int start, int end) {
-        if (key == null) {
-            return Collections.emptyList();
-        }
-
-        List<String> list = store.get(key);
-        if (list == null || list.isEmpty()) {
-            return Collections.emptyList();
-        }
-
-        ListIndexRange range = normalizeIndexRange(list.size(), start, end);
-
-        if (!range.isValidRange()) {
-            return Collections.emptyList();
-        }
-
-        // Return defensive copy to prevent external modification
-        return new ArrayList<>(list.subList(range.start(), range.end() + 1));
-    }
-
-    /**
-     * Gets the length of a list.
-     */
-    public int getLength(String key) {
-        if (key == null) {
-            return 0;
-        }
-
-        List<String> list = store.get(key);
-        return list != null ? list.size() : 0;
-    }
-
-    /**
-     * Removes and returns elements from the right (end) of a list.
-     */
+    /** Pop a single element from the right. */
     public Optional<String> rightPop(String key) {
-        if (key == null) {
+        if (key == null)
             return Optional.empty();
-        }
-
-        List<String> list = store.get(key);
-        if (list == null || list.isEmpty()) {
+        QuickList<String> list = store.get(key);
+        if (list == null || list.length() == 0)
             return Optional.empty();
-        }
-
-        synchronized (list) {
-            if (list.isEmpty()) {
-                return Optional.empty();
-            }
-            return Optional.of(list.remove(list.size() - 1));
-        }
+        return Optional.ofNullable(list.popRight());
     }
 
-    /**
-     * Removes and returns elements from the left (beginning) of a list.
-     */
+    /** Pop a single element from the left. */
     public Optional<String> leftPop(String key) {
-        if (key == null) {
+        if (key == null)
             return Optional.empty();
-        }
-
-        List<String> list = store.get(key);
-        if (list == null || list.isEmpty()) {
+        QuickList<String> list = store.get(key);
+        if (list == null || list.length() == 0)
             return Optional.empty();
-        }
-
-        synchronized (list) {
-            if (list.isEmpty()) {
-                return Optional.empty();
-            }
-            return Optional.of(list.remove(0));
-        }
+        return Optional.ofNullable(list.popLeft());
     }
 
-    public List<String> leftPop(String key, int elementCount) {
+    /** Pop multiple elements from the left efficiently. */
+    public List<String> leftPop(String key, int count) {
+        if (count < 0)
+            throw new IllegalArgumentException("elementCount cannot be negative");
 
-        if (elementCount < 0) {
-            throw new IllegalArgumentException("elementCount cannot be negative: " + elementCount);
-        }
-
-        List<String> list = store.get(key);
-        if (key == null || list == null || list.isEmpty()) {
+        QuickList<String> list = store.get(key);
+        if (key == null || list == null || list.length() == 0)
             return Collections.emptyList();
-        }
-        List<String> removed = new ArrayList<>();
 
-        int listSize = list.size();
+        if (list.length() < count)
+            throw new IndexOutOfBoundsException(
+                    "Requested " + count + " elements, but list only has " + list.length());
 
-        synchronized (list) {
-            if (listSize < elementCount) {
-                throw new IndexOutOfBoundsException(
-                        "Requested " + elementCount + " elements, but list only has " + listSize);
-            }
-
-
-            for (int i = 0; i < elementCount; i++) {
-                removed.add(list.remove(0));
-            }
-
+        // QuickList supports bulk range extraction and removal
+        List<String> removed = list.range(0, count - 1);
+        for (int i = 0; i < count; i++) {
+            list.popLeft();
         }
         return removed;
-
-
     }
 
-    /**
-     * Checks if a list exists.
-     */
+    /** Pop multiple elements from the right efficiently. */
+    public List<String> rightPop(String key, int count) {
+        if (count < 0)
+            throw new IllegalArgumentException("elementCount cannot be negative");
+
+        QuickList<String> list = store.get(key);
+        if (key == null || list == null || list.length() == 0)
+            return Collections.emptyList();
+
+        if (list.length() < count)
+            throw new IndexOutOfBoundsException(
+                    "Requested " + count + " elements, but list only has " + list.length());
+
+        int len = list.length();
+        List<String> removed = list.range(len - count, len - 1);
+        for (int i = 0; i < count; i++) {
+            list.popRight();
+        }
+        return removed;
+    }
+
+    /** Get elements in a range. */
+    public List<String> getRange(String key, int start, int end) {
+        if (key == null)
+            return Collections.emptyList();
+        QuickList<String> list = store.get(key);
+        if (list == null || list.length() == 0)
+            return Collections.emptyList();
+        return list.range(start, end);
+    }
+
+    /** Get length of a list. */
+    public int getLength(String key) {
+        if (key == null)
+            return 0;
+        QuickList<String> list = store.get(key);
+        return list != null ? list.length() : 0;
+    }
+
+    /** Check existence of a list. */
     public boolean exists(String key) {
         return key != null && store.containsKey(key);
     }
 
-    /**
-     * Deletes a list.
-     */
+    /** Delete a list. */
     public boolean delete(String key) {
         return store.remove(key) != null;
     }
 
-    /**
-     * Clears all lists from the store.
-     */
+    /** Clear all lists. */
     public void clear() {
         store.clear();
     }
 
-    /**
-     * Normalizes start and end indices, handling negative values and boundary conditions.
-     */
-    private ListIndexRange normalizeIndexRange(int listSize, int start, int end) {
-        // Handle negative indices
-        if (start < 0) {
-            start = listSize + start;
-        }
-        if (end < 0) {
-            end = listSize + end;
-        }
-
-        // Clamp to valid range
-        start = Math.max(0, start);
-        end = Math.min(listSize - 1, end);
-
-        return new ListIndexRange(start, end, listSize);
-    }
-
-    /**
-     * Helper record for handling index range validation.
-     */
-    private record ListIndexRange(int start, int end, int listSize) {
-        public boolean isValidRange() {
-            return start <= end && start < listSize;
-        }
+    private void validateKeyAndValues(String key, String... values) {
+        if (key == null)
+            throw new IllegalArgumentException("Key cannot be null");
+        if (values == null || values.length == 0)
+            throw new IllegalArgumentException("Values cannot be null or empty");
     }
 }
