@@ -1,16 +1,17 @@
 module redis {
-    exports command;
-    exports command.string;
-    exports command.list;
-    exports command.util;
-
-    exports store;
-    exports resp;
-    exports response;
-    exports record;
-    exports util;
-    exports datatype;
-    exports datatype.data;
-    exports enums;
+    exports blocking;
+    exports collections;
+    exports commands;
+    exports commands.basic;
+    exports commands.lists;
+    exports commands.streams;
+    exports commands.strings;
+    exports common;
+    exports server.handler;
+    exports server.protocol;
+    exports storage;
+    exports storage.expiry;
+    exports storage.interfaces;
+    exports storage.types;
+    exports storage.types.streams;
 }
-
