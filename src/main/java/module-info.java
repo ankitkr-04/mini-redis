@@ -9,5 +9,6 @@ module redis {
     exports response;
     exports record;
     exports util;
+    exports datatype;
 }
 

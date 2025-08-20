@@ -12,6 +12,8 @@ public final class DataStore {
     private final ListStore listStore = new ListStore();
     private final BlockingClientStore blockedClientStore = new BlockingClientStore();
 
+    // private final
+
     // --- Key-Value operations ---
     public void set(String key, ExpiringValue value) {
         keyValueStore.set(key, value);

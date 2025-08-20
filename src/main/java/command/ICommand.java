@@ -12,10 +12,12 @@ import command.string.GetCommand;
 import command.string.SetCommand;
 import command.util.EchoCommand;
 import command.util.PingCommand;
+import command.util.TypeCommand;
 import store.DataStore;
 
-public sealed interface ICommand permits PingCommand, EchoCommand, SetCommand, GetCommand,
-        RPushCommand, LRangeCommand, LPushCommand, LLenCommand, LPopCommand, BLPopCommand {
+public sealed interface ICommand
+        permits PingCommand, EchoCommand, SetCommand, GetCommand, RPushCommand, LRangeCommand,
+        LPushCommand, LLenCommand, LPopCommand, BLPopCommand, TypeCommand {
 
     default ByteBuffer execute(String[] args, DataStore dataStore, SocketChannel channel) {
         return execute(args, dataStore);

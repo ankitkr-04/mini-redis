@@ -5,7 +5,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
-import util.QuickList;
+import datatype.QuickList;
 
 public final class ListStore {
     private final Map<String, QuickList<String>> store = new ConcurrentHashMap<>();

@@ -2,32 +2,33 @@ package util;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Queue;
+import datatype.DelayedExecuter;
 import record.BlockedClient;
 import resp.RESPFormatter;
 import store.DataStore;
 
 public class TimeoutChecker {
     private static final int INTERVAL_IN_MS = 100;
-
+    private final DelayedExecuter executer = new DelayedExecuter();
     private final DataStore dataStore;
 
     public TimeoutChecker(DataStore dataStore) {
         this.dataStore = dataStore;
     }
 
+    public void scheduleNextCheck() {
+        executer.schedule(() -> {
+            checkExpiredClients();
+            scheduleNextCheck();
+        }, Duration.ofMillis(INTERVAL_IN_MS));
+    }
+
     public void start() {
-        Thread.startVirtualThread(() -> {
-            while (true) {
-                try {
-                    Thread.sleep(INTERVAL_IN_MS); // Check every 100ms
-                    checkExpiredClients();
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                }
-            }
-        });
+        executer.start();
+        scheduleNextCheck();
     }
 
     private void checkExpiredClients() {
