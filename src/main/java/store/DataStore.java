@@ -3,72 +3,79 @@ package store;
 import java.nio.channels.SocketChannel;
 import java.util.List;
 import java.util.Optional;
+import datatype.ExpiringMetadata;
+import enums.DataType;
 import record.BlockedClient;
-import record.ExpiringValue;
 
 public final class DataStore {
 
-    private final KeyValueStore keyValueStore = new KeyValueStore();
-    private final ListStore listStore = new ListStore();
+    private final UnifiedStore unifiedStore = new UnifiedStore();
     private final BlockingClientStore blockedClientStore = new BlockingClientStore();
 
-    // private final
-
     // --- Key-Value operations ---
-    public void set(String key, ExpiringValue value) {
-        keyValueStore.set(key, value);
+    public void set(String key, String value) {
+        unifiedStore.setString(key, value);
+    }
+
+    public void set(String key, String value, ExpiringMetadata metadata) {
+        unifiedStore.setString(key, value, metadata);
     }
 
     public Optional<String> get(String key) {
-        return keyValueStore.get(key);
+        return unifiedStore.getString(key);
     }
 
     public boolean existsKey(String key) {
-        return keyValueStore.exists(key);
+        return unifiedStore.exists(key);
     }
 
     public boolean deleteKey(String key) {
-        return keyValueStore.delete(key);
+        return unifiedStore.delete(key);
+    }
+
+    public DataType getKeyType(String key) {
+        return unifiedStore.getType(key).orElse(DataType.NONE);
     }
 
     // --- List operations ---
     public int pushToList(String key, String... values) {
-        return listStore.rightPush(key, values);
+        return unifiedStore.rightPush(key, values);
     }
 
     public int leftPushToList(String key, String... values) {
-        return listStore.leftPush(key, values);
+        return unifiedStore.leftPush(key, values);
     }
 
     public List<String> getListRange(String key, int start, int end) {
-        return listStore.getRange(key, start, end);
+        return unifiedStore.getListRange(key, start, end);
     }
 
     public int getListLength(String key) {
-        return listStore.getLength(key);
+        return unifiedStore.getListLength(key);
     }
 
     public Optional<String> popFromListRight(String key) {
-        return listStore.rightPop(key);
+        return unifiedStore.rightPop(key);
     }
 
     public Optional<String> popFromListLeft(String key) {
-        return listStore.leftPop(key);
+        return unifiedStore.leftPop(key);
     }
 
     public List<String> popFromListLeft(String key, int elementCount) {
-        return listStore.leftPop(key, elementCount);
+        return unifiedStore.leftPop(key, elementCount);
     }
 
     public boolean existsList(String key) {
-        return listStore.exists(key);
+        return unifiedStore.getType(key).map(type -> type == DataType.LIST).orElse(false);
     }
 
     public boolean deleteList(String key) {
-        return listStore.delete(key);
+        return unifiedStore.delete(key);
     }
 
-    // --- Blocking client registry operations ---
+
+    // --- Blocking client registry operations (unchanged) ---
     public void addBlockedClient(String key, SocketChannel client, double timeoutEndMillis) {
         blockedClientStore.addClient(key, client, timeoutEndMillis);
     }
@@ -89,13 +96,9 @@ public final class DataStore {
         return blockedClientStore.hasClients(key);
     }
 
-    // --- Access specialized stores ---
-    public KeyValueStore getKeyValueStore() {
-        return keyValueStore;
-    }
-
-    public ListStore getListStore() {
-        return listStore;
+    // --- Access to stores ---
+    public UnifiedStore getUnifiedStore() {
+        return unifiedStore;
     }
 
     public BlockingClientStore getBlockedClientStore() {
@@ -104,8 +107,7 @@ public final class DataStore {
 
     // --- Global operations ---
     public void clearAll() {
-        keyValueStore.clear();
-        listStore.clear();
+        unifiedStore.clear();
         blockedClientStore.clear();
     }
 }

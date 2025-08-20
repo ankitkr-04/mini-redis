@@ -2,7 +2,7 @@ package command.string;
 
 import java.nio.ByteBuffer;
 import command.ICommand;
-import record.ExpiringValue;
+import datatype.ExpiringMetadata;
 import response.StandardResponses;
 import store.DataStore;
 
@@ -17,15 +17,17 @@ public final class SetCommand implements ICommand {
         String key = args[1];
         String value = args[2];
 
-        ExpiringValue expiringValue;
+        ExpiringMetadata metadata;
         if (args.length == 3) {
-            expiringValue = ExpiringValue.withoutExpiry(value);
-        } else { // args.length == 5 and PX is guaranteed by validateArgs
+            // No PX -> never expires
+            metadata = ExpiringMetadata.never();
+        } else {
+            // args.length == 5 and PX is guaranteed by validateArgs
             long expiryMs = Long.parseLong(args[4]);
-            expiringValue = ExpiringValue.withExpiry(value, expiryMs);
+            metadata = ExpiringMetadata.in(expiryMs);
         }
 
-        dataStore.set(key, expiringValue);
+        dataStore.set(key, value, metadata);
         return StandardResponses.OK.duplicate();
     }
 

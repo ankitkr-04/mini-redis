@@ -2,6 +2,7 @@ package command.util;
 
 import java.nio.ByteBuffer;
 import command.ICommand;
+import resp.RESPFormatter;
 import store.DataStore;
 
 public final class TypeCommand implements ICommand {
@@ -13,7 +14,11 @@ public final class TypeCommand implements ICommand {
 
     @Override
     public ByteBuffer execute(String[] args, DataStore dataStore) {
-        
+        var type = dataStore.getKeyType(args[1]);
+
+        return RESPFormatter.simpleString(type.getValue());
+
+
     }
 
 }

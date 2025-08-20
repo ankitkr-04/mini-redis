@@ -35,6 +35,7 @@
                         </manifest>
                     </archive>
                     <outputDirectory>${dir}</outputDirectory>
+
                 </configuration>
 
                 <executions>

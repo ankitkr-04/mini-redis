@@ -9,17 +9,27 @@ public class QuickList<T> {
     private static final int NODE_CAPACITY = 64;
 
     private static class Node<T> {
-        T[] elements;
-        int start = 0, end = 0; // [start, end) valid elements
+        @SuppressWarnings("unchecked")
+        final T[] elements = (T[]) new Object[NODE_CAPACITY];
+        int start, end; // valid range: [start, end)
         Node<T> prev, next;
 
-        @SuppressWarnings("unchecked")
         Node() {
-            elements = (T[]) new Object[NODE_CAPACITY];
+            // center the start/end so we can grow in both directions
+            start = NODE_CAPACITY / 2;
+            end = NODE_CAPACITY / 2;
         }
 
         int size() {
             return end - start;
+        }
+
+        boolean hasLeftSpace() {
+            return start > 0;
+        }
+
+        boolean hasRightSpace() {
+            return end < NODE_CAPACITY;
         }
     }
 
@@ -31,16 +41,16 @@ public class QuickList<T> {
     public void pushLeft(T val) {
         lock.writeLock().lock();
         try {
-            if (head == null)
+            if (head == null) {
                 head = tail = new Node<>();
-            if (head.size() >= NODE_CAPACITY) {
+            }
+            if (!head.hasLeftSpace()) {
                 Node<T> newHead = new Node<>();
                 newHead.next = head;
                 head.prev = newHead;
                 head = newHead;
             }
-            head.start--;
-            head.elements[head.start] = val;
+            head.elements[--head.start] = val;
             size.incrementAndGet();
         } finally {
             lock.writeLock().unlock();
@@ -50,9 +60,10 @@ public class QuickList<T> {
     public void pushRight(T val) {
         lock.writeLock().lock();
         try {
-            if (tail == null)
+            if (tail == null) {
                 head = tail = new Node<>();
-            if (tail.size() >= NODE_CAPACITY) {
+            }
+            if (!tail.hasRightSpace()) {
                 Node<T> newTail = new Node<>();
                 tail.next = newTail;
                 newTail.prev = tail;
@@ -65,16 +76,23 @@ public class QuickList<T> {
         }
     }
 
-    public void pushLeft(T... vals) {
-        for (T val : vals)
+    // ---------------- Bulk push (keeps order: the first element in vals is inserted first)
+    // ----------------
+    @SafeVarargs
+    public final void pushLeft(T... vals) {
+        // LPUSH semantics: elements are pushed in the order provided,
+        // i.e., pushLeft(a, b) will result in list: b, a, ...
+        for (T val : vals) {
             pushLeft(val);
+        }
     }
 
-    public void pushRight(T... vals) {
-        for (T val : vals)
+    @SafeVarargs
+    public final void pushRight(T... vals) {
+        for (T val : vals) {
             pushRight(val);
+        }
     }
-
 
     // ---------------- Single element pop ----------------
     public T popLeft() {
@@ -154,7 +172,7 @@ public class QuickList<T> {
                 count -= take;
             }
             size.addAndGet(-result.size());
-            // reverse to maintain order for left-to-right popping
+            // we popped from the right; maintain left-to-right order for the caller
             java.util.Collections.reverse(result);
             return result;
         } finally {
@@ -162,20 +180,31 @@ public class QuickList<T> {
         }
     }
 
-
+    // ---------------- Range (Redis-like LRANGE semantics) ----------------
     public List<T> range(int start, int end) {
         lock.readLock().lock();
         try {
             List<T> result = new ArrayList<>();
             int totalSize = size.get();
 
-            if (head == null || start < 0 || start > end || start >= totalSize) {
+            if (head == null || totalSize == 0) {
                 return result;
             }
 
-            // Clamp end within size
-            if (end >= totalSize) {
+            // Convert negative indices
+            if (start < 0)
+                start = totalSize + start;
+            if (end < 0)
+                end = totalSize + end;
+
+            // Clamp to bounds
+            if (start < 0)
+                start = 0;
+            if (end >= totalSize)
                 end = totalSize - 1;
+
+            if (start > end || start >= totalSize) {
+                return result;
             }
 
             int index = 0;
@@ -200,6 +229,8 @@ public class QuickList<T> {
     }
 
     private void removeHead() {
+        if (head == null)
+            return;
         head = head.next;
         if (head != null)
             head.prev = null;
@@ -208,6 +239,8 @@ public class QuickList<T> {
     }
 
     private void removeTail() {
+        if (tail == null)
+            return;
         tail = tail.prev;
         if (tail != null)
             tail.next = null;

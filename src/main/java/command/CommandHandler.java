@@ -13,6 +13,7 @@ import command.string.GetCommand;
 import command.string.SetCommand;
 import command.util.EchoCommand;
 import command.util.PingCommand;
+import command.util.TypeCommand;
 import resp.RESPFormatter;
 import store.DataStore;
 
@@ -21,10 +22,12 @@ public final class CommandHandler {
     private final Map<String, ICommand> commands;
 
     public CommandHandler() {
-        commands = Map.of("PING", new PingCommand(), "ECHO", new EchoCommand(), "SET",
-                new SetCommand(), "GET", new GetCommand(), "RPUSH", new RPushCommand(), "LRANGE",
-                new LRangeCommand(), "LPUSH", new LPushCommand(), "LLEN", new LLenCommand(), "LPOP",
-                new LPopCommand(), "BLPOP", new BLPopCommand());
+        commands = Map.ofEntries(Map.entry("PING", new PingCommand()),
+                Map.entry("ECHO", new EchoCommand()), Map.entry("SET", new SetCommand()),
+                Map.entry("GET", new GetCommand()), Map.entry("RPUSH", new RPushCommand()),
+                Map.entry("LRANGE", new LRangeCommand()), Map.entry("LPUSH", new LPushCommand()),
+                Map.entry("LLEN", new LLenCommand()), Map.entry("LPOP", new LPopCommand()),
+                Map.entry("BLPOP", new BLPopCommand()), Map.entry("TYPE", new TypeCommand()));
     }
 
     public ByteBuffer handle(String[] args, DataStore dataStore, SocketChannel clientChannel) {

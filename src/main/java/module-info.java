@@ -10,5 +10,7 @@ module redis {
     exports record;
     exports util;
     exports datatype;
+    exports datatype.data;
+    exports enums;
 }
 
