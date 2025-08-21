@@ -11,6 +11,7 @@ import storage.expiry.ExpiryPolicy;
 import storage.interfaces.StorageEngine;
 import storage.types.StoredValue;
 import storage.types.ValueType;
+import storage.types.streams.StreamRangeEntry;
 
 public final class InMemoryStorage implements StorageEngine {
 
@@ -89,6 +90,18 @@ public final class InMemoryStorage implements StorageEngine {
         return streamEngine.getLastStreamId(key);
     }
 
+
+    @Override
+    public List<StreamRangeEntry> getStreamRange(String key, String start, String end, int count) {
+        return streamEngine.getStreamRange(key, start, end, count);
+        
+    }
+
+    @Override
+    public List<StreamRangeEntry> getStreamRange(String key, String start, String end) {
+        return streamEngine.getStreamRange(key, start, end);
+    }
+
     // General operations
     @Override
     public boolean exists(String key) {
@@ -124,5 +137,6 @@ public final class InMemoryStorage implements StorageEngine {
         }
         return value;
     }
+
 
 }

@@ -60,4 +60,13 @@ public record CommandArgs(String operation, String[] rawArgs, SocketChannel clie
     public int argCount() {
         return rawArgs.length;
     }
+
+    public int getNumericValue(int idx) {
+        try {
+            int num = Integer.parseInt(rawArgs[idx]);
+            return num;
+        } catch (NumberFormatException e) {
+            throw new NumberFormatException("Enter Valid Count");
+        }
+    }
 }

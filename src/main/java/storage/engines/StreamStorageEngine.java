@@ -1,14 +1,18 @@
 package storage.engines;
 
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.ConcurrentNavigableMap;
 import java.util.concurrent.ConcurrentSkipListMap;
+import java.util.stream.Collectors;
 import common.ErrorMessage;
 import common.ValidationUtil;
 import storage.expiry.ExpiryPolicy;
 import storage.interfaces.StreamStorage;
 import storage.types.StoredValue;
 import storage.types.streams.StreamEntry;
+import storage.types.streams.StreamRangeEntry;
 import storage.types.streams.StreamValue;
 
 public class StreamStorageEngine implements StreamStorage {
@@ -39,6 +43,72 @@ public class StreamStorageEngine implements StreamStorage {
             return Optional.of(sv.value().lastKey());
         }
         return Optional.empty();
+    }
+
+    @Override
+    public List<StreamRangeEntry> getStreamRange(String key, String start, String end, int count) {
+        StoredValue<?> value = getValidValue(key);
+        if (!(value instanceof StreamValue sv)) {
+            return List.of(); // Return empty list if stream doesn't exist
+        }
+
+        var streamData = sv.value();
+        if (streamData.isEmpty()) {
+            return List.of();
+        }
+
+        // Handle special range markers
+        String actualStart = normalizeRangeStart(start, streamData);
+        String actualEnd = normalizeRangeEnd(end, streamData);
+
+        // Get entries within range
+        var rangeMap = streamData.subMap(actualStart, true, actualEnd, true);
+
+        return rangeMap.values().stream().limit(count > 0 ? count : Long.MAX_VALUE)
+                .map(this::convertToRangeEntry).collect(Collectors.toList());
+    }
+
+    @Override
+    public List<StreamRangeEntry> getStreamRange(String key, String start, String end) {
+        return getStreamRange(key, start, end, 0); // 0 means no limit
+    }
+
+    private String normalizeRangeStart(String start,
+            ConcurrentNavigableMap<String, StreamEntry> streamData) {
+        return switch (start) {
+            case "-" -> streamData.firstKey(); // Start from the beginning
+            case "+" -> throw new IllegalArgumentException("Invalid range: start cannot be '+'");
+            default -> {
+                if (!ValidationUtil.isValidStreamId(start)) {
+                    throw new IllegalArgumentException("Invalid stream ID format: " + start);
+                }
+                yield start;
+            }
+        };
+    }
+
+    private String normalizeRangeEnd(String end,
+            ConcurrentNavigableMap<String, StreamEntry> streamData) {
+        return switch (end) {
+            case "+" -> streamData.lastKey(); // End at the last entry
+            case "-" -> throw new IllegalArgumentException("Invalid range: end cannot be '-'");
+            default -> {
+                if (!ValidationUtil.isValidStreamId(end)) {
+                    throw new IllegalArgumentException("Invalid stream ID format: " + end);
+                }
+                yield end;
+            }
+        };
+    }
+
+    private StreamRangeEntry convertToRangeEntry(StreamEntry entry) {
+        // Convert the Map<String, String> fields to List<String> format
+        // Redis XRANGE returns fields as alternating field-value pairs
+        List<String> fieldList = entry.fields().entrySet().stream()
+                .flatMap(e -> java.util.stream.Stream.of(e.getKey(), e.getValue()))
+                .collect(Collectors.toList());
+
+        return new StreamRangeEntry(entry.id(), fieldList);
     }
 
     private String generateOrValidateId(String key, String id, StreamValue streamValue) {
