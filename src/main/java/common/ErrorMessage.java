@@ -17,6 +17,8 @@ public final class ErrorMessage {
         public static final String ID_ALREADY_EXISTS = "The ID specified in XADD already exists";
         public static final String ID_EQUAL_OR_SMALLER_THAN_LAST =
                 "The ID specified in XADD is equal or smaller than the target stream top item";
+
+
     }
 
     /** Messages related to general stream operations */
@@ -26,6 +28,8 @@ public final class ErrorMessage {
         public static final String INVALID_STREAM_ID_FORMAT = "Invalid stream ID format";
         public static final String STREAM_NOT_FOUND = "The specified stream does not exist";
         public static final String STREAM_EXPIRED = "The stream has expired";
+        public static final String MISSING_STREAM_ARGUMENT = "syntax error, missing STREAMS";
+        public static final String WRONG_ARGUMENT_COUNT = "wrong number of arguments for XREAD";
     }
 
     /** Messages related to TTL / Expiry */
@@ -53,4 +57,6 @@ public final class ErrorMessage {
         public static final String UNKNOWN_COMMAND_WITH_NAME = "unknown command '%s'";
         public static final String WRONG_ARG_COUNT = "wrong number of arguments for '%s' command";
     }
+
+    public static final String UNEXPECTED_TOKEN = "Unexpected token: '%d'";
 }

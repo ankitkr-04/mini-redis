@@ -13,6 +13,7 @@ import commands.lists.PushCommand;
 import commands.lists.RangeCommand;
 import commands.streams.AddStreamCommand;
 import commands.streams.RangeStreamCommand;
+import commands.streams.ReadStreamCommand;
 import commands.strings.GetCommand;
 import commands.strings.SetCommand;
 import storage.interfaces.StorageEngine;
@@ -60,7 +61,7 @@ public final class CommandRegistry {
         // Stream commands
         registry.register(new AddStreamCommand());
         registry.register(new RangeStreamCommand());
-
+        registry.register(new ReadStreamCommand());
         return registry;
     }
 

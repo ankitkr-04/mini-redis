@@ -196,6 +196,30 @@ public class StreamStorageEngine implements StreamStorage {
         return id;
     }
 
+    public List<StreamRangeEntry> getStreamAfter(String key, String afterId, int count) {
+        StoredValue<?> value = getValidValue(key);
+        if (!(value instanceof StreamValue sv)) {
+            return List.of();
+        }
+
+        var streamData = sv.value();
+        if (streamData.isEmpty()) {
+            return List.of();
+        }
+
+        // validate ID
+        if (!ValidationUtil.isValidStreamId(afterId)) {
+            throw new IllegalArgumentException("Invalid stream ID: " + afterId);
+        }
+
+        var rangeMap = streamData.tailMap(afterId, false);
+
+        return rangeMap.values().stream()
+                .limit(count > 0 ? count : Long.MAX_VALUE)
+                .map(this::convertToRangeEntry)
+                .toList();
+    }
+
     private StoredValue<?> getValidValue(String key) {
         StoredValue<?> value = store.get(key);
         if (value != null && value.isExpired()) {

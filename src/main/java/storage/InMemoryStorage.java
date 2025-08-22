@@ -94,12 +94,17 @@ public final class InMemoryStorage implements StorageEngine {
     @Override
     public List<StreamRangeEntry> getStreamRange(String key, String start, String end, int count) {
         return streamEngine.getStreamRange(key, start, end, count);
-        
+
     }
 
     @Override
     public List<StreamRangeEntry> getStreamRange(String key, String start, String end) {
         return streamEngine.getStreamRange(key, start, end);
+    }
+
+    @Override
+    public List<StreamRangeEntry> getStreamAfter(String key, String afterId, int count) {
+        return streamEngine.getStreamAfter(key, afterId, count);
     }
 
     // General operations
@@ -137,6 +142,7 @@ public final class InMemoryStorage implements StorageEngine {
         }
         return value;
     }
+
 
 
 }

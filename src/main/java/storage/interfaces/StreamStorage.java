@@ -17,4 +17,10 @@ public interface StreamStorage {
 
     List<StreamRangeEntry> getStreamRange(String key, String start, String end);
 
+    List<StreamRangeEntry> getStreamAfter(String key, String afterId, int count);
+
+    default List<StreamRangeEntry> getStreamAfter(String key, String afterId) {
+        return getStreamAfter(key, afterId, -1);
+    }
+
 }

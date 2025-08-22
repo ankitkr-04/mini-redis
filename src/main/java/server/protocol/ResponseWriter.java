@@ -72,11 +72,25 @@ public final class ResponseWriter {
         return encode(response.toString());
     }
 
-
     public static ByteBuffer arrayOfBuffers(ByteBuffer... elements) {
         return arrayOfBuffers(List.of(elements));
     }
 
+    // Utility method for converting stream entries to ByteBuffer format
+    public static <T> ByteBuffer streamEntries(List<T> entries, Function<T, String> idExtractor,
+            Function<T, List<String>> fieldsExtractor) {
+        List<ByteBuffer> responseList = entries.stream().<ByteBuffer>map(entry -> {
+            List<ByteBuffer> fields = fieldsExtractor.apply(entry).stream()
+                    .map(ResponseWriter::bulkString)
+                    .toList();
+
+            return ResponseWriter.arrayOfBuffers(
+                    ResponseWriter.bulkString(idExtractor.apply(entry)),
+                    ResponseWriter.arrayOfBuffers(fields));
+        }).toList();
+
+        return ResponseWriter.arrayOfBuffers(responseList);
+    }
 
     public static <T> ByteBuffer arrayWith(List<T> elements, Function<T, String> mapper) {
         if (elements == null || elements.isEmpty()) {

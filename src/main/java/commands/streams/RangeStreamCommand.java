@@ -1,7 +1,5 @@
 package commands.streams;
 
-import java.nio.ByteBuffer;
-import java.util.List;
 import commands.Command;
 import commands.CommandArgs;
 import commands.CommandResult;
@@ -27,18 +25,8 @@ public final class RangeStreamCommand implements Command {
         var res = (count > 0) ? storage.getStreamRange(args.arg(1), args.arg(2), args.arg(3), count)
                 : storage.getStreamRange(args.arg(1), args.arg(2), args.arg(3));
 
-        // Convert stream entries to ByteBuffer list
-        List<ByteBuffer> responseList = res.stream().<ByteBuffer>map(r -> {
-            // Create field list as ByteBuffers
-            List<ByteBuffer> fields =
-                    r.fieldList().stream().map(ResponseWriter::bulkString).toList();
-
-            // Create array of [id, fields_array]
-            return ResponseWriter.arrayOfBuffers(ResponseWriter.bulkString(r.id()),
-                    ResponseWriter.arrayOfBuffers(fields));
-        }).toList();
-
-        return new CommandResult.Success(ResponseWriter.arrayOfBuffers(responseList));
+        return new CommandResult.Success(
+                ResponseWriter.streamEntries(res, e -> e.id(), e -> e.fieldList()));
     }
 
     @Override

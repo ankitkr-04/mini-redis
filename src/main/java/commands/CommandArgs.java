@@ -1,7 +1,9 @@
 package commands;
 
 import java.nio.channels.SocketChannel;
+import java.util.Arrays;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import common.ErrorMessage;
 
@@ -59,6 +61,20 @@ public record CommandArgs(String operation, String[] rawArgs, SocketChannel clie
 
     public int argCount() {
         return rawArgs.length;
+    }
+
+    public List<String> slice(int st) {
+        if (st < 0 || st > rawArgs.length) {
+            throw new IndexOutOfBoundsException("Invalid slice start: " + st);
+        }
+        return Arrays.asList(rawArgs).subList(st, rawArgs.length);
+    }
+
+    public List<String> slice(int st, int end) {
+        if (st < 0 || end > rawArgs.length || st > end) {
+            throw new IndexOutOfBoundsException("Invalid slice range: " + st + " to " + end);
+        }
+        return Arrays.asList(rawArgs).subList(st, end);
     }
 
     public int getNumericValue(int idx) {
