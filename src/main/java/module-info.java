@@ -8,6 +8,7 @@ module redis {
     exports commands.impl.lists;
     exports commands.impl.streams;
     exports commands.impl.strings;
+    exports commands.impl.transaction;
     exports events;
     exports errors;
     exports server.handler;
@@ -17,4 +18,8 @@ module redis {
     exports storage.repositories;
     exports storage.types;
     exports storage.types.streams;
+    exports transaction;
+    exports validation;
+    exports config;
+    exports utils;
 }

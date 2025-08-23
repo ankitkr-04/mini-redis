@@ -10,6 +10,7 @@ public final class RedisConstants {
     public static final String OK_RESPONSE = "+OK" + CRLF;
     public static final String PONG_RESPONSE = "+PONG" + CRLF;
     public static final String ERROR_PREFIX = "-ERR ";
+    public static final String QUEUED_RESPONSE = "+QUEUED" + CRLF;
 
     // Data Structure Defaults
     public static final int LIST_NODE_CAPACITY = 64;

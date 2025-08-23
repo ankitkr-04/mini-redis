@@ -7,6 +7,7 @@ import commands.registry.CommandRegistry;
 import events.StorageEventPublisher;
 import protocol.CommandDispatcher;
 import storage.StorageService;
+import transaction.TransactionManager;
 
 public final class ServerContext implements StorageEventPublisher {
     private final StorageService storageService;
@@ -14,13 +15,20 @@ public final class ServerContext implements StorageEventPublisher {
     private final CommandRegistry commandRegistry;
     private final CommandDispatcher commandDispatcher;
     private final TimeoutScheduler timeoutScheduler;
+    private final TransactionManager transactionManager;
 
     public ServerContext() {
         this.storageService = new StorageService();
         this.blockingManager = new BlockingManager(storageService);
-        this.commandRegistry = CommandFactory.createDefault(this, blockingManager);
-        this.commandDispatcher = new CommandDispatcher(commandRegistry, storageService);
+
+        this.transactionManager = new TransactionManager();
+        this.commandRegistry =
+                CommandFactory.createDefault(this, blockingManager, transactionManager);
+        this.commandDispatcher =
+                new CommandDispatcher(commandRegistry, storageService, transactionManager);
+
         this.timeoutScheduler = new TimeoutScheduler(blockingManager);
+
     }
 
     public void start() {
@@ -40,6 +48,14 @@ public final class ServerContext implements StorageEventPublisher {
 
     public BlockingManager getBlockingManager() {
         return blockingManager;
+    }
+
+    public CommandRegistry getCommandRegistry() {
+        return commandRegistry;
+    }
+
+    public TransactionManager getTransactionManager() {
+        return transactionManager;
     }
 
     public CommandDispatcher getCommandDispatcher() {

@@ -15,12 +15,16 @@ import commands.impl.streams.ReadStreamCommand;
 import commands.impl.strings.GetCommand;
 import commands.impl.strings.IncrCommand;
 import commands.impl.strings.SetCommand;
+import commands.impl.transaction.DiscardCommand;
+import commands.impl.transaction.ExecCommand;
+import commands.impl.transaction.MultiCommand;
 import events.StorageEventPublisher;
+import transaction.TransactionManager;
 
 public final class CommandFactory {
 
     public static CommandRegistry createDefault(StorageEventPublisher eventPublisher,
-            BlockingManager blockingManager) {
+            BlockingManager blockingManager, TransactionManager transactionManager) {
         CommandRegistry registry = new CommandRegistry();
 
         // Basic commands
@@ -50,6 +54,11 @@ public final class CommandFactory {
         registry.register(new AddStreamCommand(eventPublisher));
         registry.register(new RangeStreamCommand());
         registry.register(new ReadStreamCommand(blockingManager));
+
+        // Transaction commands
+        registry.register(new MultiCommand(transactionManager, eventPublisher));
+        registry.register(new ExecCommand(transactionManager, eventPublisher));
+        registry.register(new DiscardCommand(transactionManager, eventPublisher));
 
         return registry;
     }
