@@ -6,8 +6,8 @@ import commands.base.WriteCommand;
 import events.StorageEventPublisher;
 import protocol.ResponseBuilder;
 import storage.StorageService;
-import validation.CommandValidator;
 import validation.ValidationResult;
+import validation.ValidationUtils;
 
 public class IncrCommand extends WriteCommand {
 
@@ -22,7 +22,7 @@ public class IncrCommand extends WriteCommand {
 
     @Override
     protected ValidationResult validateCommand(CommandArgs args) {
-        return CommandValidator.validateArgCount(args, 2);
+        return ValidationUtils.validateArgCount(args, 2);
     }
 
     @Override

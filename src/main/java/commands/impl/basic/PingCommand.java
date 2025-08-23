@@ -6,8 +6,8 @@ import commands.base.ReadCommand;
 import config.RedisConstants;
 import protocol.ResponseBuilder;
 import storage.StorageService;
-import validation.CommandValidator;
 import validation.ValidationResult;
+import validation.ValidationUtils;
 
 public final class PingCommand extends ReadCommand {
     @Override
@@ -17,7 +17,7 @@ public final class PingCommand extends ReadCommand {
 
     @Override
     protected ValidationResult validateCommand(CommandArgs args) {
-        return CommandValidator.validateArgCount(args, 1);
+        return ValidationUtils.validateArgCount(args, 1);
     }
 
     @Override

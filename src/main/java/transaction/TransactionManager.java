@@ -5,10 +5,10 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 public final class TransactionManager {
-    private final Map<SocketChannel, TansactionState> clientStates = new ConcurrentHashMap<>();
+    private final Map<SocketChannel, TransactionState> clientStates = new ConcurrentHashMap<>();
 
-    public TansactionState getOrCreateState(SocketChannel client) {
-        return clientStates.computeIfAbsent(client, _ -> new TansactionState());
+    public TransactionState getOrCreateState(SocketChannel client) {
+        return clientStates.computeIfAbsent(client, _ -> new TransactionState());
     }
 
     public void clearState(SocketChannel client) {

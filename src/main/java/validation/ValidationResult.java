@@ -3,9 +3,7 @@ package validation;
 import java.util.Optional;
 import errors.ServerError;
 
-public sealed interface ValidationResult
-        permits ValidationResult.Valid, ValidationResult.Invalid {
-
+public sealed interface ValidationResult permits ValidationResult.Valid, ValidationResult.Invalid {
     boolean isValid();
 
     Optional<ServerError> error();

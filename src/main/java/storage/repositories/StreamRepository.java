@@ -5,7 +5,6 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentNavigableMap;
 import java.util.concurrent.ConcurrentSkipListMap;
-import java.util.stream.Collectors;
 import errors.ErrorCode;
 import storage.Repository;
 import storage.expiry.ExpiryPolicy;
@@ -32,10 +31,8 @@ public final class StreamRepository
 
     @Override
     public Optional<ConcurrentNavigableMap<String, StreamEntry>> get(String key) {
-        return getValidValue(key)
-                .filter(StreamValue.class::isInstance)
-                .map(StreamValue.class::cast)
-                .map(StreamValue::value);
+        return getValidValue(key).filter(v -> v.type() == ValueType.STREAM)
+                .map(v -> ((StreamValue) v).value());
     }
 
     @Override
@@ -50,12 +47,9 @@ public final class StreamRepository
 
     @Override
     public ValueType getType(String key) {
-        return getValidValue(key)
-                .map(StoredValue::type)
-                .orElse(ValueType.NONE);
+        return getValidValue(key).map(StoredValue::type).orElse(ValueType.NONE);
     }
 
-    // Stream-specific operations
     public ConcurrentNavigableMap<String, StreamEntry> getOrCreate(String key,
             ExpiryPolicy expiry) {
         return get(key).orElseGet(() -> {
@@ -68,31 +62,26 @@ public final class StreamRepository
 
     public String addEntry(String key, String id, Map<String, String> fields, ExpiryPolicy expiry) {
         ConcurrentNavigableMap<String, StreamEntry> stream = getOrCreate(key, expiry);
-        String entryId = generateOrValidateId(key, id, stream);
+        String entryId = generateOrValidateId(id, stream);
         stream.put(entryId, new StreamEntry(entryId, fields));
         return entryId;
     }
 
     public Optional<String> getLastId(String key) {
-        return get(key)
-                .filter(stream -> !stream.isEmpty())
-                .map(ConcurrentNavigableMap::lastKey);
+        return get(key).filter(s -> !s.isEmpty()).map(ConcurrentNavigableMap::lastKey);
     }
 
     public List<StreamRangeEntry> getRange(String key, String start, String end, int count) {
         return get(key).map(stream -> {
             if (stream.isEmpty())
                 return List.<StreamRangeEntry>of();
-
-            String actualStart = normalizeRangeStart(start, stream);
-            String actualEnd = normalizeRangeEnd(end, stream);
-
+            String actualStart = "-".equals(start) ? stream.firstKey() : start;
+            String actualEnd = "+".equals(end) ? stream.lastKey() : end;
             var rangeMap = stream.subMap(actualStart, true, actualEnd, true);
-
             return rangeMap.values().stream()
                     .limit(count > 0 ? count : Long.MAX_VALUE)
-                    .map(this::convertToRangeEntry)
-                    .collect(Collectors.toList());
+                    .map(this::toRangeEntry)
+                    .toList();
         }).orElse(List.of());
     }
 
@@ -100,34 +89,30 @@ public final class StreamRepository
         return get(key).map(stream -> {
             if (stream.isEmpty())
                 return List.<StreamRangeEntry>of();
-
             var rangeMap = stream.tailMap(afterId, false);
-
             return rangeMap.values().stream()
                     .limit(count > 0 ? count : Long.MAX_VALUE)
-                    .map(this::convertToRangeEntry)
-                    .collect(Collectors.toList());
+                    .map(this::toRangeEntry)
+                    .toList();
         }).orElse(List.of());
     }
 
-    private String generateOrValidateId(String key, String id,
+    private String generateOrValidateId(String id,
             ConcurrentNavigableMap<String, StreamEntry> stream) {
-        return switch (id) {
-            case "*" -> generateAutoId(key, stream);
-            case String s when s.endsWith("-*") -> generateTimestampId(key, s, stream);
-            default -> validateExplicitId(id, stream);
-        };
+        if ("*".equals(id))
+            return generateAutoId(stream);
+        if (id.endsWith("-*"))
+            return generateTimestampId(id, stream);
+        return validateExplicitId(id, stream);
     }
 
-    private String generateAutoId(String key, ConcurrentNavigableMap<String, StreamEntry> stream) {
+    private String generateAutoId(ConcurrentNavigableMap<String, StreamEntry> stream) {
         long timestamp = System.currentTimeMillis();
         long seq = 0L;
-
         if (!stream.isEmpty()) {
             String[] parts = stream.lastKey().split("-");
             long lastMs = Long.parseLong(parts[0]);
             long lastSeq = Long.parseLong(parts[1]);
-
             if (timestamp <= lastMs) {
                 timestamp = lastMs;
                 seq = lastSeq + 1;
@@ -136,80 +121,45 @@ public final class StreamRepository
         return timestamp + "-" + seq;
     }
 
-    private String generateTimestampId(String key, String id,
+    private String generateTimestampId(String id,
             ConcurrentNavigableMap<String, StreamEntry> stream) {
         String[] parts = id.split("-");
-        if (parts.length != 2 || !"*".equals(parts[1])) {
-            throw new IllegalArgumentException(ErrorCode.INVALID_STREAM_ID.getMessage());
-        }
-
         long timestamp = Long.parseLong(parts[0]);
         long seq = 0L;
-
         if (!stream.isEmpty()) {
             String[] lastParts = stream.lastKey().split("-");
             long lastMs = Long.parseLong(lastParts[0]);
             long lastSeq = Long.parseLong(lastParts[1]);
-
             if (timestamp == 0) {
-                if (lastMs == 0) {
+                if (lastMs == 0)
                     seq = lastSeq + 1;
-                } else {
+                else
                     throw new IllegalArgumentException(ErrorCode.STREAM_ID_TOO_SMALL.getMessage());
-                }
             } else {
-                if (lastMs == timestamp) {
+                if (lastMs == timestamp)
                     seq = lastSeq + 1;
-                } else if (timestamp < lastMs) {
+                else if (timestamp < lastMs)
                     throw new IllegalArgumentException(ErrorCode.STREAM_ID_TOO_SMALL.getMessage());
-                }
             }
-        } else if (timestamp == 0) {
+        } else if (timestamp == 0)
             seq = 1;
-        }
-
         return timestamp + "-" + seq;
     }
 
     private String validateExplicitId(String id,
             ConcurrentNavigableMap<String, StreamEntry> stream) {
-        if ("0-0".equals(id)) {
+        if ("0-0".equals(id))
             throw new IllegalArgumentException(ErrorCode.STREAM_ID_ZERO.getMessage());
-        }
-
-        if (!stream.isEmpty() && StreamIdComparator.compareIds(id, stream.lastKey()) <= 0) {
+        if (!stream.isEmpty() && StreamIdComparator.compareIds(id, stream.lastKey()) <= 0)
             throw new IllegalArgumentException(ErrorCode.STREAM_ID_TOO_SMALL.getMessage());
-        }
-
-        if (stream.containsKey(id)) {
+        if (stream.containsKey(id))
             throw new IllegalArgumentException(ErrorCode.STREAM_ID_EXISTS.getMessage());
-        }
-
         return id;
     }
 
-    private String normalizeRangeStart(String start,
-            ConcurrentNavigableMap<String, StreamEntry> stream) {
-        return switch (start) {
-            case "-" -> stream.firstKey();
-            case "+" -> throw new IllegalArgumentException("Invalid range: start cannot be '+'");
-            default -> start;
-        };
-    }
-
-    private String normalizeRangeEnd(String end,
-            ConcurrentNavigableMap<String, StreamEntry> stream) {
-        return switch (end) {
-            case "+" -> stream.lastKey();
-            case "-" -> throw new IllegalArgumentException("Invalid range: end cannot be '-'");
-            default -> end;
-        };
-    }
-
-    private StreamRangeEntry convertToRangeEntry(StreamEntry entry) {
+    private StreamRangeEntry toRangeEntry(StreamEntry entry) {
         List<String> fieldList = entry.fields().entrySet().stream()
-                .flatMap(e -> java.util.stream.Stream.of(e.getKey(), e.getValue()))
-                .collect(Collectors.toList());
+                .flatMap(e -> List.of(e.getKey(), e.getValue()).stream()).toList();
         return new StreamRangeEntry(entry.id(), fieldList);
     }
 
@@ -217,7 +167,7 @@ public final class StreamRepository
         StoredValue<?> value = store.get(key);
         if (value != null && value.isExpired()) {
             store.remove(key);
-            return Optional.empty();
+            value = null;
         }
         return Optional.ofNullable(value);
     }

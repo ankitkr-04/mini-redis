@@ -6,16 +6,11 @@ import commands.Command;
 import commands.CommandArgs;
 import errors.ErrorCode;
 
-public final class TansactionState {
+public final class TransactionState {
     private boolean inTransaction = false;
     private final List<QueuedCommand> queuedCommands = new ArrayList<>();
 
     public record QueuedCommand(Command command, CommandArgs args) {
-
-    }
-
-    public TansactionState() {
-        this.inTransaction = false;
     }
 
     public void beginTransaction() {
@@ -27,13 +22,11 @@ public final class TansactionState {
         if (!inTransaction) {
             throw new IllegalStateException(ErrorCode.NOT_IN_TRANSACTION.getMessage());
         }
-
-        QueuedCommand queuedCommand = new QueuedCommand(command, args);
-        this.queuedCommands.add(queuedCommand);
+        this.queuedCommands.add(new QueuedCommand(command, args));
     }
 
     public List<QueuedCommand> getQueuedCommands() {
-        return new ArrayList<>(queuedCommands);
+        return List.copyOf(queuedCommands); // Java 10+ immutable copy
     }
 
     public boolean isInTransaction() {
@@ -44,5 +37,4 @@ public final class TansactionState {
         this.inTransaction = false;
         this.queuedCommands.clear();
     }
-
 }

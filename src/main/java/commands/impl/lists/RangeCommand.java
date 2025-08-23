@@ -5,8 +5,8 @@ import commands.CommandResult;
 import commands.base.ReadCommand;
 import protocol.ResponseBuilder;
 import storage.StorageService;
-import validation.CommandValidator;
 import validation.ValidationResult;
+import validation.ValidationUtils;
 
 public final class RangeCommand extends ReadCommand {
     @Override
@@ -16,15 +16,15 @@ public final class RangeCommand extends ReadCommand {
 
     @Override
     protected ValidationResult validateCommand(CommandArgs args) {
-        var result = CommandValidator.validateArgCount(args, 4);
+        var result = ValidationUtils.validateArgCount(args, 4);
         if (!result.isValid())
             return result;
 
-        result = CommandValidator.validateInteger(args.arg(2));
+        result = ValidationUtils.validateInteger(args.arg(2));
         if (!result.isValid())
             return result;
 
-        return CommandValidator.validateInteger(args.arg(3));
+        return ValidationUtils.validateInteger(args.arg(3));
     }
 
     @Override

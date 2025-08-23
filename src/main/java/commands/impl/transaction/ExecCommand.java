@@ -11,8 +11,8 @@ import events.StorageEventPublisher;
 import protocol.ResponseBuilder;
 import storage.StorageService;
 import transaction.TransactionManager;
-import validation.CommandValidator;
 import validation.ValidationResult;
+import validation.ValidationUtils;
 
 public final class ExecCommand extends WriteCommand {
     private final TransactionManager transactionManager;
@@ -28,47 +28,29 @@ public final class ExecCommand extends WriteCommand {
     }
 
     @Override
-    protected ValidationResult validateCommand(commands.CommandArgs args) {
-        return CommandValidator.validateArgCount(args, 1);
+    protected ValidationResult validateCommand(CommandArgs args) {
+        return ValidationUtils.validateArgCount(args, 1);
     }
 
     @Override
     protected CommandResult executeCommand(CommandArgs args, StorageService storage) {
-
         var state = transactionManager.getOrCreateState(args.clientChannel());
-
-        if (!state.isInTransaction()) {
-            return new CommandResult.Error(errors.ErrorCode.EXEC_WITHOUT_MULTI.getMessage());
-        }
-
+        if (!state.isInTransaction())
+            return new CommandResult.Error(ErrorCode.EXEC_WITHOUT_MULTI.getMessage());
         var queuedCommands = state.getQueuedCommands();
         state.clearTransaction();
-
-        if (queuedCommands.isEmpty()) {
+        if (queuedCommands.isEmpty())
             return new CommandResult.Success(ResponseBuilder.encode(RedisConstants.EMPTY_ARRAY));
-        }
-
         var results = new ArrayList<ByteBuffer>();
         for (var queued : queuedCommands) {
-            try {
-                var result = queued.command().execute(queued.args(), storage);
-                if (result instanceof CommandResult.Success success) {
-                    results.add(success.response());
-                } else if (result instanceof CommandResult.Error error) {
-                    results.add(ResponseBuilder.error(error.message()));
-                } else {
-                    results.add(
-                            ResponseBuilder.error(ErrorCode.BLOCKNG_IN_TRANSACTION.getMessage()));
-                }
-            } catch (Exception e) {
-                results.add(ResponseBuilder.error(e.getMessage()));
-
-            }
+            CommandResult result = queued.command().execute(queued.args(), storage);
+            results.add(switch (result) {
+                case CommandResult.Success s -> s.response();
+                case CommandResult.Error e -> ResponseBuilder.error(e.message());
+                case CommandResult.Async _ -> ResponseBuilder
+                        .error(ErrorCode.BLOCKING_IN_TRANSACTION.getMessage());
+            });
         }
-
-
         return new CommandResult.Success(ResponseBuilder.arrayOfBuffers(results));
     }
-
-
 }

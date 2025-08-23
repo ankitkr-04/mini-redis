@@ -23,10 +23,8 @@ public final class StringRepository implements Repository<String> {
 
     @Override
     public Optional<String> get(String key) {
-        return getValidValue(key)
-                .filter(StringValue.class::isInstance)
-                .map(StringValue.class::cast)
-                .map(StringValue::value);
+        return getValidValue(key).filter(v -> v.type() == ValueType.STRING)
+                .map(v -> ((StringValue) v).value());
     }
 
     @Override
@@ -41,43 +39,28 @@ public final class StringRepository implements Repository<String> {
 
     @Override
     public ValueType getType(String key) {
-        return getValidValue(key)
-                .map(StoredValue::type)
-                .orElse(ValueType.NONE);
+        return getValidValue(key).map(StoredValue::type).orElse(ValueType.NONE);
     }
 
-    // change signature to return long
     public long increment(String key) {
-        if (!exists(key)) {
+        if (!exists(key))
             put(key, "0", ExpiryPolicy.never());
-        }
-
-        // ensure it's a string value
-        if (getType(key) != ValueType.STRING) {
+        if (getType(key) != ValueType.STRING)
             throw new IllegalStateException(ErrorCode.WRONG_TYPE.getMessage());
-        }
-
         String currentValue = get(key).orElse("0");
-        try {
-            long val = Long.parseLong(currentValue.trim());
-            if (val == Long.MAX_VALUE) {
-                // match Redis behaviour: overflow error
-                throw new NumberFormatException("ERR increment or decrement would overflow");
-            }
-            val = val + 1L;
-            put(key, Long.toString(val), ExpiryPolicy.never());
-            return val;
-        } catch (NumberFormatException e) {
-            // normalize error message so upper layers can return it
-            throw new NumberFormatException(ErrorCode.INVALID_INTEGER.getMessage());
-        }
+        long val = Long.parseLong(currentValue.trim());
+        if (val == Long.MAX_VALUE)
+            throw new NumberFormatException("ERR increment or decrement would overflow");
+        val += 1;
+        put(key, Long.toString(val), ExpiryPolicy.never());
+        return val;
     }
 
     private Optional<StoredValue<?>> getValidValue(String key) {
         StoredValue<?> value = store.get(key);
         if (value != null && value.isExpired()) {
             store.remove(key);
-            return Optional.empty();
+            value = null;
         }
         return Optional.ofNullable(value);
     }

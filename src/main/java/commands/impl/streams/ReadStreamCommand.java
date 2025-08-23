@@ -9,8 +9,7 @@ import commands.CommandArgs;
 import commands.CommandResult;
 import commands.base.BlockingCommand;
 import config.RedisConstants;
-import errors.ErrorCode;
-import errors.ValidationError;
+import errors.ServerError;
 import protocol.ResponseBuilder;
 import storage.StorageService;
 import validation.ValidationResult;
@@ -33,9 +32,7 @@ public final class ReadStreamCommand extends BlockingCommand {
             XReadArgs.parse(args);
             return ValidationResult.valid();
         } catch (IllegalArgumentException e) {
-            return ValidationResult.invalid(new ValidationError(
-                    e.getMessage(),
-                    ErrorCode.WRONG_ARG_COUNT));
+            return ValidationResult.invalid(ServerError.validation(e.getMessage()));
         }
     }
 

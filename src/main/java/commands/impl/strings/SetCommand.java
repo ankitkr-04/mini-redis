@@ -4,12 +4,14 @@ import commands.CommandArgs;
 import commands.CommandResult;
 import commands.base.WriteCommand;
 import config.RedisConstants;
+import errors.ErrorCode;
+import errors.ServerError;
 import events.StorageEventPublisher;
 import protocol.ResponseBuilder;
 import storage.StorageService;
 import storage.expiry.ExpiryPolicy;
-import validation.CommandValidator;
 import validation.ValidationResult;
+import validation.ValidationUtils;
 
 public final class SetCommand extends WriteCommand {
     public SetCommand(StorageEventPublisher eventPublisher) {
@@ -28,12 +30,12 @@ public final class SetCommand extends WriteCommand {
         } else if (args.argCount() == 5) {
             if (!"PX".equalsIgnoreCase(args.arg(3))) {
                 return ValidationResult.invalid(
-                        new errors.ValidationError("Invalid expiry option",
-                                errors.ErrorCode.WRONG_ARG_COUNT));
+                        ServerError.validation(
+                                ErrorCode.WRONG_ARG_COUNT.getMessage()));
             }
-            return CommandValidator.validateInteger(args.arg(4));
+            return ValidationUtils.validateInteger(args.arg(4));
         }
-        return CommandValidator.validateArgRange(args, 3, 5);
+        return ValidationUtils.validateArgRange(args, 3, 5);
     }
 
     @Override

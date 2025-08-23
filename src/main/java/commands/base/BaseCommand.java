@@ -7,7 +7,6 @@ import storage.StorageService;
 import validation.ValidationResult;
 
 public abstract class BaseCommand implements Command {
-
     @Override
     public final CommandResult execute(CommandArgs args, StorageService storage) {
         ValidationResult validation = validateCommand(args);

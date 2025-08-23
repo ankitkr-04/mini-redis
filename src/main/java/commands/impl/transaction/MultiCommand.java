@@ -9,8 +9,8 @@ import events.StorageEventPublisher;
 import protocol.ResponseBuilder;
 import storage.StorageService;
 import transaction.TransactionManager;
-import validation.CommandValidator;
 import validation.ValidationResult;
+import validation.ValidationUtils;
 
 public final class MultiCommand extends WriteCommand {
     private final TransactionManager transactionManager;
@@ -28,7 +28,7 @@ public final class MultiCommand extends WriteCommand {
 
     @Override
     protected ValidationResult validateCommand(CommandArgs args) {
-        return CommandValidator.validateArgCount(args, 1);
+        return ValidationUtils.validateArgCount(args, 1);
     }
 
     @Override

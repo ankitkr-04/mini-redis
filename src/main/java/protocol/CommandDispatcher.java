@@ -12,8 +12,8 @@ import commands.registry.CommandRegistry;
 import config.RedisConstants;
 import errors.ErrorCode;
 import storage.StorageService;
-import transaction.TansactionState;
 import transaction.TransactionManager;
+import transaction.TransactionState;
 
 public final class CommandDispatcher {
     private final CommandRegistry registry;
@@ -53,7 +53,7 @@ public final class CommandDispatcher {
     }
 
     private boolean isTransactionalButNotControlCommand(
-            TansactionState state, Command command) {
+            TransactionState state, Command command) {
         return state.isInTransaction() &&
                 !(command instanceof MultiCommand
                         || command instanceof ExecCommand
@@ -61,7 +61,7 @@ public final class CommandDispatcher {
     }
 
     private ByteBuffer queueTransactionCommand(
-            TansactionState state, Command command, CommandArgs args) {
+            TransactionState state, Command command, CommandArgs args) {
         state.queueCommand(command, args);
         return ResponseBuilder.encode(RedisConstants.QUEUED_RESPONSE);
     }

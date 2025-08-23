@@ -21,27 +21,20 @@ public final class BlockingManager implements StorageEventListener {
         this.storage = storage;
     }
 
-    // Block client for list operations
     public void blockClientForLists(List<String> keys, SocketChannel client,
             Optional<Long> timeoutMs) {
-        BlockedClient blockedClient = createBlockedClient(client, timeoutMs);
-        BlockingContext context = new ListBlockingContext(keys);
-
-        clientContexts.put(blockedClient, context);
-        for (String key : keys) {
-            waitingClients.computeIfAbsent(key, _ -> new ConcurrentLinkedQueue<>())
-                    .offer(blockedClient);
-        }
+        blockClient(keys, client, timeoutMs, new ListBlockingContext(keys));
     }
 
-    // Block client for stream operations
     public void blockClientForStreams(List<String> keys, List<String> ids, Optional<Integer> count,
             SocketChannel client, Optional<Long> timeoutMs) {
+        blockClient(keys, client, timeoutMs, new StreamBlockingContext(keys, ids, count));
+    }
+
+    private void blockClient(List<String> keys, SocketChannel client, Optional<Long> timeoutMs,
+            BlockingContext context) {
         BlockedClient blockedClient = createBlockedClient(client, timeoutMs);
-
-        StreamBlockingContext context = new StreamBlockingContext(keys, ids, count);
         clientContexts.put(blockedClient, context);
-
         for (String key : keys) {
             waitingClients.computeIfAbsent(key, _ -> new ConcurrentLinkedQueue<>())
                     .offer(blockedClient);
@@ -54,37 +47,35 @@ public final class BlockingManager implements StorageEventListener {
         if (queue == null)
             return;
 
-        queue.removeIf(client -> {
-            if (client.isExpired()) {
-                sendTimeoutResponse(client);
-                cleanupClient(client);
-                return true;
-            }
-
-            BlockingContext context = clientContexts.get(client);
-            if (context != null && context.hasDataAvailable(key, storage)) {
-                sendSuccessResponse(client, context);
-                cleanupClient(client);
-                return true;
-            }
-
-            return false;
-        });
+        queue.removeIf(client -> processClient(client, key));
 
         if (queue.isEmpty()) {
             waitingClients.remove(key);
         }
     }
 
-    @Override
-    public void onDataRemoved(String key) {
-        // Not typically needed for Redis operations
+    private boolean processClient(BlockedClient client, String key) {
+        if (client.isExpired()) {
+            sendTimeoutResponse(client);
+            cleanupClient(client);
+            return true;
+        }
+
+        BlockingContext context = clientContexts.get(client);
+        if (context != null && context.hasDataAvailable(key, storage)) {
+            sendSuccessResponse(client, context);
+            cleanupClient(client);
+            return true;
+        }
+        return false;
     }
 
-    public void removeExpiredClients() {
-        for (var entry : waitingClients.entrySet()) {
-            Queue<BlockedClient> queue = entry.getValue();
+    @Override
+    public void onDataRemoved(String key) {}
 
+    public void removeExpiredClients() {
+        waitingClients.entrySet().removeIf(entry -> {
+            Queue<BlockedClient> queue = entry.getValue();
             queue.removeIf(client -> {
                 if (client.isExpired()) {
                     sendTimeoutResponse(client);
@@ -93,11 +84,8 @@ public final class BlockingManager implements StorageEventListener {
                 }
                 return false;
             });
-
-            if (queue.isEmpty()) {
-                waitingClients.remove(entry.getKey());
-            }
-        }
+            return queue.isEmpty();
+        });
     }
 
     public void clear() {
@@ -106,36 +94,28 @@ public final class BlockingManager implements StorageEventListener {
     }
 
     private BlockedClient createBlockedClient(SocketChannel client, Optional<Long> timeoutMs) {
-        return timeoutMs
-                .map(ms -> BlockedClient.withTimeout(client, ms))
+        return timeoutMs.map(ms -> BlockedClient.withTimeout(client, ms))
                 .orElse(BlockedClient.indefinite(client));
     }
 
     private void sendSuccessResponse(BlockedClient client, BlockingContext context) {
-        try {
-            ByteBuffer response = context.buildSuccessResponse(storage);
-            writeResponse(client.channel(), response);
-        } catch (Exception e) {
-            // Silently handle errors
-        }
+        writeResponse(client.channel(), context.buildSuccessResponse(storage));
     }
 
     private void sendTimeoutResponse(BlockedClient client) {
-        try {
-            writeResponse(client.channel(), ResponseBuilder.bulkString(null));
-        } catch (Exception e) {
-            // Silently handle errors
-        }
+        writeResponse(client.channel(), ResponseBuilder.bulkString(null));
     }
 
-    private void writeResponse(SocketChannel channel, ByteBuffer response) throws Exception {
-        while (response.hasRemaining()) {
-            channel.write(response);
+    private void writeResponse(SocketChannel channel, ByteBuffer response) {
+        try {
+            while (response.hasRemaining())
+                channel.write(response);
+        } catch (Exception ignored) {
         }
     }
 
     private void cleanupClient(BlockedClient client) {
         clientContexts.remove(client);
-        waitingClients.values().forEach(queue -> queue.remove(client));
+        waitingClients.values().forEach(q -> q.remove(client));
     }
 }

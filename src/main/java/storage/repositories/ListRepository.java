@@ -24,12 +24,9 @@ public final class ListRepository implements Repository<QuickList<String>> {
 
     @Override
     public Optional<QuickList<String>> get(String key) {
-        return getValidValue(key)
-                .filter(ListValue.class::isInstance)
-                .map(ListValue.class::cast)
-                .map(ListValue::value);
+        return getValidValue(key).filter(v -> v.type() == ValueType.LIST)
+                .map(v -> ((ListValue) v).value());
     }
-    
 
     @Override
     public boolean delete(String key) {
@@ -43,12 +40,9 @@ public final class ListRepository implements Repository<QuickList<String>> {
 
     @Override
     public ValueType getType(String key) {
-        return getValidValue(key)
-                .map(StoredValue::type)
-                .orElse(ValueType.NONE);
+        return getValidValue(key).map(StoredValue::type).orElse(ValueType.NONE);
     }
 
-    // List-specific operations
     public QuickList<String> getOrCreate(String key) {
         return get(key).orElseGet(() -> {
             QuickList<String> newList = new QuickList<>();
@@ -60,7 +54,6 @@ public final class ListRepository implements Repository<QuickList<String>> {
     public int pushLeft(String key, String... values) {
         if (values.length == 0)
             return getLength(key);
-
         QuickList<String> list = getOrCreate(key);
         list.pushLeft(values);
         return list.length();
@@ -69,7 +62,6 @@ public final class ListRepository implements Repository<QuickList<String>> {
     public int pushRight(String key, String... values) {
         if (values.length == 0)
             return getLength(key);
-
         QuickList<String> list = getOrCreate(key);
         list.pushRight(values);
         return list.length();
@@ -78,9 +70,8 @@ public final class ListRepository implements Repository<QuickList<String>> {
     public Optional<String> popLeft(String key) {
         return get(key).map(list -> {
             String result = list.popLeft();
-            if (list.isEmpty()) {
+            if (list.isEmpty())
                 delete(key);
-            }
             return result;
         });
     }
@@ -88,9 +79,8 @@ public final class ListRepository implements Repository<QuickList<String>> {
     public Optional<String> popRight(String key) {
         return get(key).map(list -> {
             String result = list.popRight();
-            if (list.isEmpty()) {
+            if (list.isEmpty())
                 delete(key);
-            }
             return result;
         });
     }
@@ -98,9 +88,8 @@ public final class ListRepository implements Repository<QuickList<String>> {
     public List<String> popLeft(String key, int count) {
         return get(key).map(list -> {
             List<String> result = list.popLeft(count);
-            if (list.isEmpty()) {
+            if (list.isEmpty())
                 delete(key);
-            }
             return result;
         }).orElse(List.of());
     }
@@ -108,30 +97,25 @@ public final class ListRepository implements Repository<QuickList<String>> {
     public List<String> popRight(String key, int count) {
         return get(key).map(list -> {
             List<String> result = list.popRight(count);
-            if (list.isEmpty()) {
+            if (list.isEmpty())
                 delete(key);
-            }
             return result;
         }).orElse(List.of());
     }
 
     public List<String> range(String key, int start, int end) {
-        return get(key)
-                .map(list -> list.range(start, end))
-                .orElse(List.of());
+        return get(key).map(list -> list.range(start, end)).orElse(List.of());
     }
 
     public int getLength(String key) {
-        return get(key)
-                .map(QuickList::length)
-                .orElse(0);
+        return get(key).map(QuickList::length).orElse(0);
     }
 
     private Optional<StoredValue<?>> getValidValue(String key) {
         StoredValue<?> value = store.get(key);
         if (value != null && value.isExpired()) {
             store.remove(key);
-            return Optional.empty();
+            value = null;
         }
         return Optional.ofNullable(value);
     }

@@ -5,13 +5,13 @@ import commands.CommandArgs;
 import commands.CommandResult;
 import commands.base.WriteCommand;
 import errors.ErrorCode;
-import errors.ValidationError;
+import errors.ServerError;
 import events.StorageEventPublisher;
 import protocol.ResponseBuilder;
 import storage.StorageService;
 import storage.expiry.ExpiryPolicy;
-import validation.CommandValidator;
 import validation.ValidationResult;
+import validation.ValidationUtils;
 
 public class AddStreamCommand extends WriteCommand {
 
@@ -26,17 +26,16 @@ public class AddStreamCommand extends WriteCommand {
 
     @Override
     protected ValidationResult validateCommand(CommandArgs args) {
-        var res = CommandValidator.validateArgRange(args, 4, Integer.MAX_VALUE);
+        var res = ValidationUtils.validateArgRange(args, 4, Integer.MAX_VALUE);
         if (!res.isValid())
             return res;
 
         if ((args.argCount() - 3) % 2 != 0) {
-            return ValidationResult.invalid(new ValidationError(
-                    ErrorCode.WRONG_ARG_COUNT.getMessage(),
-                    ErrorCode.WRONG_ARG_COUNT));
+            return ValidationResult
+                    .invalid(ServerError.validation(ErrorCode.WRONG_ARG_COUNT.getMessage()));
         }
 
-        return CommandValidator.validateStreamId(args.arg(2));
+        return ValidationUtils.validateStreamId(args.arg(2));
     }
 
     @Override

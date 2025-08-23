@@ -37,15 +37,9 @@ public final class CommandFactory {
         registry.register(new SetCommand(eventPublisher));
         registry.register(new IncrCommand(eventPublisher));
 
-        // List commands
-        var pushCommand = new PushCommand(eventPublisher);
-        registry.register("LPUSH", pushCommand);
-        registry.register("RPUSH", pushCommand);
-
-        var popCommand = new PopCommand();
-        registry.register("LPOP", popCommand);
-        registry.register("RPOP", popCommand);
-
+        // List commands - simplified registration
+        registry.register(new PushCommand(eventPublisher), "LPUSH", "RPUSH");
+        registry.register(new PopCommand(), "LPOP", "RPOP");
         registry.register(new RangeCommand());
         registry.register(new LengthCommand());
         registry.register(new BlockingPopCommand(blockingManager));

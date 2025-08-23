@@ -5,10 +5,10 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import errors.ErrorCode;
 
 public record CommandArgs(String operation, String[] rawArgs, SocketChannel clientChannel) {
 
+    // Convenience accessors
     public String key() {
         return hasKey() ? rawArgs[1] : null;
     }
@@ -18,39 +18,14 @@ public record CommandArgs(String operation, String[] rawArgs, SocketChannel clie
     }
 
     public String[] values() {
-        if (rawArgs.length <= 2)
-            return new String[0];
-        String[] values = new String[rawArgs.length - 2];
-        System.arraycopy(rawArgs, 2, values, 0, values.length);
-        return values;
-    }
-
-    /**
-     * Extracts a map of field-value pairs starting from a given index. Ensures pairs are complete
-     * (even length).
-     */
-    public Map<String, String> fieldValueMap(int startIndex) {
-        Map<String, String> map = new HashMap<>();
-        if (startIndex >= rawArgs.length)
-            return map;
-
-        // must be pairs
-        if (((rawArgs.length - startIndex) % 2) != 0) {
-            throw new IllegalArgumentException(ErrorCode.KEY_NOT_FOUND.getMessage());
-        }
-
-        for (int i = startIndex; i < rawArgs.length; i += 2) {
-            String field = rawArgs[i];
-            String value = rawArgs[i + 1];
-            map.put(field, value);
-        }
-        return map;
+        return rawArgs.length <= 2 ? new String[0] : Arrays.copyOfRange(rawArgs, 2, rawArgs.length);
     }
 
     public String arg(int index) {
         return index < rawArgs.length ? rawArgs[index] : null;
     }
 
+    // Validation helpers
     public boolean hasKey() {
         return rawArgs.length >= 2;
     }
@@ -63,26 +38,57 @@ public record CommandArgs(String operation, String[] rawArgs, SocketChannel clie
         return rawArgs.length;
     }
 
-    public List<String> slice(int st) {
-        if (st < 0 || st > rawArgs.length) {
-            throw new IndexOutOfBoundsException("Invalid slice start: " + st);
-        }
-        return Arrays.asList(rawArgs).subList(st, rawArgs.length);
+    // Slice operations using modern Java
+    public List<String> slice(int start) {
+        return slice(start, rawArgs.length);
     }
 
-    public List<String> slice(int st, int end) {
-        if (st < 0 || end > rawArgs.length || st > end) {
-            throw new IndexOutOfBoundsException("Invalid slice range: " + st + " to " + end);
+    public List<String> slice(int start, int end) {
+        if (start < 0 || end > rawArgs.length || start > end) {
+            throw new IndexOutOfBoundsException(
+                    "Invalid slice range: %d to %d".formatted(start, end));
         }
-        return Arrays.asList(rawArgs).subList(st, end);
+        return Arrays.asList(rawArgs).subList(start, end);
     }
 
-    public int getNumericValue(int idx) {
-        try {
-            int num = Integer.parseInt(rawArgs[idx]);
-            return num;
-        } catch (NumberFormatException e) {
-            throw new NumberFormatException("Enter Valid Count");
+    // Parsing utilities
+    public int getIntArg(int index) {
+        return Integer.parseInt(arg(index));
+    }
+
+    public long getLongArg(int index) {
+        return Long.parseLong(arg(index));
+    }
+
+    public double getDoubleArg(int index) {
+        return Double.parseDouble(arg(index));
+    }
+
+    /**
+     * Extracts field-value pairs starting from the given index.
+     * Validates that pairs are complete (even count).
+     */
+    public Map<String, String> fieldValueMap(int startIndex) {
+        Map<String, String> map = new HashMap<>();
+
+        if (startIndex >= rawArgs.length) {
+            return map;
         }
+
+        int remaining = rawArgs.length - startIndex;
+        if (remaining % 2 != 0) {
+            throw new IllegalArgumentException("Field-value pairs must be complete");
+        }
+
+        for (int i = startIndex; i < rawArgs.length; i += 2) {
+            map.put(rawArgs[i], rawArgs[i + 1]);
+        }
+
+        return map;
+    }
+
+    // Create a copy with different client channel (useful for testing)
+    public CommandArgs withClient(SocketChannel newClient) {
+        return new CommandArgs(operation, rawArgs, newClient);
     }
 }

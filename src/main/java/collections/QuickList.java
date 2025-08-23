@@ -6,10 +6,6 @@ import java.util.List;
 import java.util.concurrent.locks.StampedLock;
 import config.RedisConstants;
 
-/**
- * High-performance list implementation using chunked storage. Optimized for Redis-like operations
- * with O(1) push/pop at both ends.
- */
 public final class QuickList<T> {
     private static final int NODE_CAPACITY = RedisConstants.LIST_NODE_CAPACITY;
 
@@ -20,7 +16,6 @@ public final class QuickList<T> {
         Node<T> prev, next;
 
         Node() {
-            // Center the range to allow efficient growth in both directions
             start = end = NODE_CAPACITY / 2;
         }
 
@@ -39,17 +34,11 @@ public final class QuickList<T> {
         boolean isEmpty() {
             return start == end;
         }
-
-        // boolean isFull() {
-        // return start == 0 && end == NODE_CAPACITY;
-        // }
     }
 
     private Node<T> head, tail;
     private int totalSize = 0;
     private final StampedLock lock = new StampedLock();
-
-    // ==================== PUSH OPERATIONS ====================
 
     public void pushLeft(T value) {
         long stamp = lock.writeLock();
@@ -66,10 +55,8 @@ public final class QuickList<T> {
     public final void pushLeft(T... values) {
         if (values.length == 0)
             return;
-
         long stamp = lock.writeLock();
         try {
-            // Redis LPUSH semantics: elements pushed in order
             for (T value : values) {
                 ensureHeadCanGrowLeft();
                 head.elements[--head.start] = value;
@@ -95,7 +82,6 @@ public final class QuickList<T> {
     public final void pushRight(T... values) {
         if (values.length == 0)
             return;
-
         long stamp = lock.writeLock();
         try {
             for (T value : values) {
@@ -108,22 +94,16 @@ public final class QuickList<T> {
         }
     }
 
-    // ==================== POP OPERATIONS ====================
-
     public T popLeft() {
         long stamp = lock.writeLock();
         try {
             if (head == null)
                 return null;
-
             T value = head.elements[head.start];
-            head.elements[head.start++] = null; // Help GC
+            head.elements[head.start++] = null;
             totalSize--;
-
-            if (head.isEmpty()) {
+            if (head.isEmpty())
                 removeHead();
-            }
-
             return value;
         } finally {
             lock.unlockWrite(stamp);
@@ -135,15 +115,11 @@ public final class QuickList<T> {
         try {
             if (tail == null)
                 return null;
-
             T value = tail.elements[--tail.end];
-            tail.elements[tail.end] = null; // Help GC
+            tail.elements[tail.end] = null;
             totalSize--;
-
-            if (tail.isEmpty()) {
+            if (tail.isEmpty())
                 removeTail();
-            }
-
             return value;
         } finally {
             lock.unlockWrite(stamp);
@@ -153,33 +129,24 @@ public final class QuickList<T> {
     public List<T> popLeft(int count) {
         if (count <= 0)
             return List.of();
-        if (count > totalSize) {
-            throw new IndexOutOfBoundsException(
-                    "Cannot pop " + count + " elements, only " + totalSize + " available");
-        }
-
         long stamp = lock.writeLock();
         try {
+            if (count > totalSize)
+                throw new IndexOutOfBoundsException(
+                        "Cannot pop " + count + " elements, only " + totalSize + " available");
             List<T> result = new ArrayList<>(count);
             int remaining = count;
-
             while (remaining > 0 && head != null) {
-                int nodeSize = head.size();
-                int take = Math.min(remaining, nodeSize);
-
+                int take = Math.min(remaining, head.size());
                 for (int i = 0; i < take; i++) {
                     result.add(head.elements[head.start]);
-                    head.elements[head.start++] = null; // Help GC
+                    head.elements[head.start++] = null;
                 }
-
-                if (head.isEmpty()) {
+                if (head.isEmpty())
                     removeHead();
-                }
-
                 remaining -= take;
                 totalSize -= take;
             }
-
             return result;
         } finally {
             lock.unlockWrite(stamp);
@@ -189,34 +156,24 @@ public final class QuickList<T> {
     public List<T> popRight(int count) {
         if (count <= 0)
             return List.of();
-        if (count > totalSize) {
-            throw new IndexOutOfBoundsException(
-                    "Cannot pop " + count + " elements, only " + totalSize + " available");
-        }
-
         long stamp = lock.writeLock();
         try {
+            if (count > totalSize)
+                throw new IndexOutOfBoundsException(
+                        "Cannot pop " + count + " elements, only " + totalSize + " available");
             List<T> result = new ArrayList<>(count);
             int remaining = count;
-
             while (remaining > 0 && tail != null) {
-                int nodeSize = tail.size();
-                int take = Math.min(remaining, nodeSize);
-
+                int take = Math.min(remaining, tail.size());
                 for (int i = 0; i < take; i++) {
                     result.add(tail.elements[--tail.end]);
-                    tail.elements[tail.end] = null; // Help GC
+                    tail.elements[tail.end] = null;
                 }
-
-                if (tail.isEmpty()) {
+                if (tail.isEmpty())
                     removeTail();
-                }
-
                 remaining -= take;
                 totalSize -= take;
             }
-
-            // Maintain left-to-right order for caller
             Collections.reverse(result);
             return result;
         } finally {
@@ -224,14 +181,10 @@ public final class QuickList<T> {
         }
     }
 
-    // ==================== RANGE OPERATIONS ====================
-
     public List<T> range(int start, int end) {
         long stamp = lock.tryOptimisticRead();
         List<T> result = rangeImpl(start, end);
-
         if (!lock.validate(stamp)) {
-            // Fallback to read lock
             stamp = lock.readLock();
             try {
                 result = rangeImpl(start, end);
@@ -239,50 +192,35 @@ public final class QuickList<T> {
                 lock.unlockRead(stamp);
             }
         }
-
         return result;
     }
 
     private List<T> rangeImpl(int start, int end) {
-        if (head == null || totalSize == 0) {
+        if (head == null || totalSize == 0)
             return List.of();
-        }
-
-        // Handle negative indices (Redis-style)
         if (start < 0)
             start = totalSize + start;
         if (end < 0)
             end = totalSize + end;
-
-        // Clamp to bounds
         start = Math.max(0, start);
         end = Math.min(totalSize - 1, end);
-
-        if (start > end || start >= totalSize) {
+        if (start > end || start >= totalSize)
             return List.of();
-        }
-
         List<T> result = new ArrayList<>(end - start + 1);
         int currentIndex = 0;
         Node<T> current = head;
-
         while (current != null && currentIndex <= end) {
             for (int i = current.start; i < current.end && currentIndex <= end; i++) {
-                if (currentIndex >= start) {
+                if (currentIndex >= start)
                     result.add(current.elements[i]);
-                }
                 currentIndex++;
             }
             current = current.next;
         }
-
         return result;
     }
 
-    // ==================== UTILITY METHODS ====================
-
     public int length() {
-        // Optimistic read for frequently accessed method
         long stamp = lock.tryOptimisticRead();
         int size = totalSize;
         return lock.validate(stamp) ? size : totalSize;
@@ -292,14 +230,11 @@ public final class QuickList<T> {
         return length() == 0;
     }
 
-    // ==================== INTERNAL METHODS ====================
-
     private void ensureHeadCanGrowLeft() {
         if (head == null) {
             head = tail = new Node<>();
             return;
         }
-
         if (!head.canGrowLeft()) {
             Node<T> newHead = new Node<>();
             newHead.next = head;
@@ -313,7 +248,6 @@ public final class QuickList<T> {
             head = tail = new Node<>();
             return;
         }
-
         if (!tail.canGrowRight()) {
             Node<T> newTail = new Node<>();
             tail.next = newTail;
@@ -325,25 +259,21 @@ public final class QuickList<T> {
     private void removeHead() {
         if (head == null)
             return;
-
         head = head.next;
-        if (head != null) {
+        if (head != null)
             head.prev = null;
-        } else {
+        else
             tail = null;
-        }
     }
 
     private void removeTail() {
         if (tail == null)
             return;
-
         tail = tail.prev;
-        if (tail != null) {
+        if (tail != null)
             tail.next = null;
-        } else {
+        else
             head = null;
-        }
     }
 
     @Override
@@ -352,11 +282,9 @@ public final class QuickList<T> {
         try {
             if (isEmpty())
                 return "QuickList[]";
-
             StringBuilder sb = new StringBuilder("QuickList[");
             Node<T> current = head;
             boolean first = true;
-
             while (current != null) {
                 for (int i = current.start; i < current.end; i++) {
                     if (!first)
@@ -366,7 +294,6 @@ public final class QuickList<T> {
                 }
                 current = current.next;
             }
-
             return sb.append("]").toString();
         } finally {
             lock.unlockRead(stamp);

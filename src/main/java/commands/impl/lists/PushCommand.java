@@ -6,8 +6,8 @@ import commands.base.WriteCommand;
 import events.StorageEventPublisher;
 import protocol.ResponseBuilder;
 import storage.StorageService;
-import validation.CommandValidator;
 import validation.ValidationResult;
+import validation.ValidationUtils;
 
 public final class PushCommand extends WriteCommand {
     public PushCommand(StorageEventPublisher eventPublisher) {
@@ -16,28 +16,21 @@ public final class PushCommand extends WriteCommand {
 
     @Override
     public String name() {
-        return "PUSH"; // Handles both LPUSH and RPUSH
+        return "PUSH"; // LPUSH/RPUSH
     }
 
     @Override
     protected ValidationResult validateCommand(CommandArgs args) {
-        return CommandValidator.validateArgRange(args, 3, Integer.MAX_VALUE);
+        return ValidationUtils.validateArgRange(args, 3, Integer.MAX_VALUE);
     }
 
     @Override
     protected CommandResult executeCommand(CommandArgs args, StorageService storage) {
-        String operation = args.operation().toUpperCase();
         String key = args.key();
         String[] values = args.values();
-
-        int newSize = switch (operation) {
-            case "LPUSH" -> storage.leftPush(key, values);
-            case "RPUSH" -> storage.rightPush(key, values);
-            default -> throw new IllegalArgumentException("Unsupported operation: " + operation);
-        };
-
+        boolean isLeft = "LPUSH".equalsIgnoreCase(args.operation());
+        int newSize = isLeft ? storage.leftPush(key, values) : storage.rightPush(key, values);
         publishDataAdded(key);
-
         return new CommandResult.Success(ResponseBuilder.integer(newSize));
     }
 }

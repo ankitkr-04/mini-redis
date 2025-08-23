@@ -8,8 +8,8 @@ import commands.CommandResult;
 import commands.base.BlockingCommand;
 import protocol.ResponseBuilder;
 import storage.StorageService;
-import validation.CommandValidator;
 import validation.ValidationResult;
+import validation.ValidationUtils;
 
 public final class BlockingPopCommand extends BlockingCommand {
     private final BlockingManager blockingManager;
@@ -25,10 +25,10 @@ public final class BlockingPopCommand extends BlockingCommand {
 
     @Override
     protected ValidationResult validateCommand(CommandArgs args) {
-        var res = CommandValidator.validateArgRange(args, 3, Integer.MAX_VALUE);
+        var res = ValidationUtils.validateArgRange(args, 3, Integer.MAX_VALUE);
         if (!res.isValid())
             return res;
-        return CommandValidator.validateTimeout(args.arg(args.argCount() - 1));
+        return ValidationUtils.validateTimeout(args.arg(args.argCount() - 1));
     }
 
     @Override

@@ -5,8 +5,8 @@ import commands.CommandResult;
 import commands.base.ReadCommand;
 import protocol.ResponseBuilder;
 import storage.StorageService;
-import validation.CommandValidator;
 import validation.ValidationResult;
+import validation.ValidationUtils;
 
 public final class LengthCommand extends ReadCommand {
     @Override
@@ -16,12 +16,12 @@ public final class LengthCommand extends ReadCommand {
 
     @Override
     protected ValidationResult validateCommand(CommandArgs args) {
-        return CommandValidator.validateArgCount(args, 2);
+        return ValidationUtils.validateArgCount(args, 2);
     }
 
     @Override
     protected CommandResult executeCommand(CommandArgs args, StorageService storage) {
-        int length = storage.getListLength(args.key());
-        return new CommandResult.Success(ResponseBuilder.integer(length));
+        return new CommandResult.Success(
+                ResponseBuilder.integer(storage.getListLength(args.key())));
     }
 }

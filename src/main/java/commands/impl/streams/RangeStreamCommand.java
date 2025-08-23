@@ -4,11 +4,11 @@ import commands.CommandArgs;
 import commands.CommandResult;
 import commands.base.ReadCommand;
 import errors.ErrorCode;
-import errors.ValidationError;
+import errors.ServerError;
 import protocol.ResponseBuilder;
 import storage.StorageService;
-import validation.CommandValidator;
 import validation.ValidationResult;
+import validation.ValidationUtils;
 
 public final class RangeStreamCommand extends ReadCommand {
 
@@ -20,17 +20,15 @@ public final class RangeStreamCommand extends ReadCommand {
     @Override
     protected ValidationResult validateCommand(CommandArgs args) {
         if (args.argCount() != 4 && args.argCount() != 6) {
-            return ValidationResult.invalid(new ValidationError(
-                    ErrorCode.WRONG_ARG_COUNT.getMessage(),
-                    ErrorCode.WRONG_ARG_COUNT));
+            return ValidationResult.invalid(ServerError.validation(
+                    ErrorCode.WRONG_ARG_COUNT.getMessage()));
         }
         if (args.argCount() == 6) {
             if (!"COUNT".equalsIgnoreCase(args.arg(4))) {
-                return ValidationResult.invalid(new ValidationError(
-                        "Expected COUNT",
-                        ErrorCode.WRONG_ARG_COUNT));
+                return ValidationResult.invalid(ServerError.validation(
+                        ErrorCode.WRONG_ARG_COUNT.getMessage()));
             }
-            return CommandValidator.validateInteger(args.arg(5));
+            return ValidationUtils.validateInteger(args.arg(5));
         }
         return ValidationResult.valid();
     }
