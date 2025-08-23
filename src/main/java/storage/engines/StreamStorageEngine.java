@@ -1,5 +1,6 @@
 package storage.engines;
 
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -18,6 +19,16 @@ import storage.types.streams.StreamValue;
 public class StreamStorageEngine implements StreamStorage {
     private final Map<String, StoredValue<?>> store;
 
+    // Custom comparator for stream IDs that compares them logically
+    private static final Comparator<String> STREAM_ID_COMPARATOR = (id1, id2) -> {
+        try {
+            return ValidationUtil.compareStreamIds(id1, id2);
+        } catch (Exception e) {
+            // Fallback to string comparison if parsing fails
+            return id1.compareTo(id2);
+        }
+    };
+
     public StreamStorageEngine(Map<String, StoredValue<?>> sharedStore) {
         this.store = sharedStore;
     }
@@ -28,7 +39,8 @@ public class StreamStorageEngine implements StreamStorage {
         StreamValue streamValue = (StreamValue) store.compute(key, (_, existing) -> {
             if (existing instanceof StreamValue sv && !sv.isExpired())
                 return sv;
-            return new StreamValue(new ConcurrentSkipListMap<>(), expiry);
+            // Use custom comparator for proper stream ID ordering
+            return new StreamValue(new ConcurrentSkipListMap<>(STREAM_ID_COMPARATOR), expiry);
         });
 
         String entryId = generateOrValidateId(key, id, streamValue);
@@ -212,6 +224,8 @@ public class StreamStorageEngine implements StreamStorage {
             throw new IllegalArgumentException("Invalid stream ID: " + afterId);
         }
 
+        // Use tailMap with false to get entries strictly after afterId
+        // Since we're using STREAM_ID_COMPARATOR, this will work correctly
         var rangeMap = streamData.tailMap(afterId, false);
 
         return rangeMap.values().stream()

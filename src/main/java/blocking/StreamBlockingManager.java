@@ -75,8 +75,9 @@ public final class StreamBlockingManager extends BlockingManager<List<StreamRang
 
         // Process all waiting clients for this key
         List<BlockedClient> toRemove = new ArrayList<>();
+        List<BlockedClient> clientsToProcess = new ArrayList<>(queue);
 
-        for (BlockedClient client : queue) {
+        for (BlockedClient client : clientsToProcess) {
             if (client.isExpired()) {
                 sendTimeoutResponse(client);
                 cleanupClient(client);
@@ -86,7 +87,7 @@ public final class StreamBlockingManager extends BlockingManager<List<StreamRang
 
             // Check if this client has new data available across all their watched streams
             var streamIds = clientStreamIds.get(client);
-            if (streamIds != null && hasNewDataForClient(client, streamIds)) {
+            if (streamIds != null) {
                 var allData = collectDataForClient(client, streamIds);
                 if (!allData.isEmpty()) {
                     sendStreamSuccessResponse(client, allData);
@@ -104,20 +105,6 @@ public final class StreamBlockingManager extends BlockingManager<List<StreamRang
         }
     }
 
-    private boolean hasNewDataForClient(BlockedClient client, Map<String, String> streamIds) {
-        return streamIds.entrySet().stream()
-                .anyMatch(entry -> {
-                    String key = entry.getKey();
-                    String afterId = entry.getValue();
-                    try {
-                        return storage.getStreamAfter(key, afterId, 1).size() > 0;
-                    } catch (Exception e) {
-                        // If there's an error checking the stream, assume no data
-                        return false;
-                    }
-                });
-    }
-
     private Map<String, List<StreamRangeEntry>> collectDataForClient(
             BlockedClient client, Map<String, String> streamIds) {
         var result = new ConcurrentHashMap<String, List<StreamRangeEntry>>();
@@ -131,9 +118,7 @@ public final class StreamBlockingManager extends BlockingManager<List<StreamRang
                     result.put(key, entries);
                 }
             } catch (Exception e) {
-                // Skip this stream if there's an error
-                System.err
-                        .println("Error collecting data for stream " + key + ": " + e.getMessage());
+                // Skip this stream if there's an error - don't log to avoid output
             }
         }
 
@@ -173,7 +158,7 @@ public final class StreamBlockingManager extends BlockingManager<List<StreamRang
             var response = buildXReadResponse(streamData);
             writeResponse(client.channel(), response);
         } catch (IOException e) {
-            System.err.println("Failed to notify stream client: " + e.getMessage());
+            // Silently handle IO errors
         }
     }
 
@@ -191,8 +176,7 @@ public final class StreamBlockingManager extends BlockingManager<List<StreamRang
         try {
             writeResponse(client.channel(), ResponseWriter.bulkString(null));
         } catch (IOException e) {
-            System.err
-                    .println("Failed to send timeout response to stream client: " + e.getMessage());
+            // Silently handle IO errors
         }
     }
 

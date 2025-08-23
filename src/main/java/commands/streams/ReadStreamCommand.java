@@ -48,11 +48,12 @@ public final class ReadStreamCommand implements Command {
         }
 
         // No immediate data and blocking requested - block the client
+        var timeoutForBlocking = parsed.blockMs().filter(ms -> ms > 0);
         blockingManager.blockClientForStreams(
                 parsed.keys(),
                 parsed.ids(),
                 args.clientChannel(),
-                parsed.blockMs());
+                timeoutForBlocking);
 
         return new CommandResult.Async(); // No immediate response
     }

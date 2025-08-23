@@ -49,7 +49,7 @@ public record XReadArgs(
 
         return new XReadArgs(
                 count > 0 ? Optional.of(count) : Optional.empty(),
-                blockMs > 0 ? Optional.of(blockMs) : Optional.empty(),
+                blockMs >= 0 ? Optional.of(blockMs) : Optional.empty(),
                 keys,
                 ids);
     }
