@@ -3,6 +3,7 @@ package commands.streams;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.List;
+import blocking.StreamBlockingManager;
 import commands.Command;
 import commands.CommandArgs;
 import commands.CommandResult;
@@ -10,10 +11,20 @@ import server.protocol.ResponseWriter;
 import storage.interfaces.StorageEngine;
 
 public final class ReadStreamCommand implements Command {
+    private final StreamBlockingManager blockingManager;
+
+    public ReadStreamCommand(StreamBlockingManager blockingManager) {
+        this.blockingManager = blockingManager;
+    }
 
     @Override
     public String name() {
         return "XREAD";
+    }
+
+    @Override
+    public boolean requiresClient() {
+        return true;
     }
 
     @Override
@@ -25,12 +36,25 @@ public final class ReadStreamCommand implements Command {
             return new CommandResult.Error(e.getMessage());
         }
 
+        // Try immediate (non-blocking) read first
         List<ByteBuffer> streamResponses = buildStreamResponses(parsed, storage);
 
-        if (streamResponses.isEmpty()) {
-            return new CommandResult.Success(ResponseWriter.arrayOfBuffers()); // *0
+        // If we have data OR no blocking requested, return immediately
+        if (!streamResponses.isEmpty() || parsed.blockMs().isEmpty()) {
+            return new CommandResult.Success(
+                    streamResponses.isEmpty()
+                            ? ResponseWriter.arrayOfBuffers() // *0 for no data
+                            : ResponseWriter.arrayOfBuffers(streamResponses));
         }
-        return new CommandResult.Success(ResponseWriter.arrayOfBuffers(streamResponses));
+
+        // No immediate data and blocking requested - block the client
+        blockingManager.blockClientForStreams(
+                parsed.keys(),
+                parsed.ids(),
+                args.clientChannel(),
+                parsed.blockMs());
+
+        return new CommandResult.Async(); // No immediate response
     }
 
     /**
@@ -45,13 +69,14 @@ public final class ReadStreamCommand implements Command {
 
             var entries = parsed.count().isPresent()
                     ? storage.getStreamAfter(key, afterId, parsed.count().get())
-                    : storage.getStreamAfter(key, afterId);
+                    : storage.getStreamAfter(key, afterId, -1); // -1 means no limit
 
             if (!entries.isEmpty()) {
                 responses.add(
                         ResponseWriter.arrayOfBuffers(
                                 ResponseWriter.bulkString(key),
-                                ResponseWriter.streamEntries(entries, e -> e.id(),
+                                ResponseWriter.streamEntries(entries,
+                                        e -> e.id(),
                                         e -> e.fieldList())));
             }
         }
@@ -60,6 +85,11 @@ public final class ReadStreamCommand implements Command {
 
     @Override
     public boolean validate(CommandArgs args) {
-        return args.argCount() >= 4;
+        try {
+            XReadArgs.parse(args); // This will throw if invalid
+            return true;
+        } catch (IllegalArgumentException e) {
+            return false;
+        }
     }
 }

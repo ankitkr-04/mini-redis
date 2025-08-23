@@ -1,5 +1,7 @@
 package blocking;
 
+import java.util.Arrays;
+import java.util.List;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
@@ -8,10 +10,10 @@ import common.Constants;
 public class TimeoutScheduler {
     private final ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor(
             Thread.ofVirtual().name("timeout-scheduler").factory());
-    private final BlockingManager blockingManager;
+    private final List<BlockingManager<?>> blockingManagers;
 
-    public TimeoutScheduler(BlockingManager blockingManager) {
-        this.blockingManager = blockingManager;
+    public TimeoutScheduler(BlockingManager<?>... blockingManagers) {
+        this.blockingManagers = Arrays.asList(blockingManagers);
     }
 
     public void start() {
@@ -21,7 +23,9 @@ public class TimeoutScheduler {
 
     private void cleanupExpiredClients() {
         try {
-            blockingManager.removeExpiredClients();
+            for (var m : blockingManagers) {
+                m.removeExpiredClients();
+            }
         } catch (Exception e) {
             System.err.println("Error during timeout cleanup: " + e.getMessage());
         }

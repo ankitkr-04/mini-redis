@@ -6,7 +6,8 @@ import java.nio.channels.SelectionKey;
 import java.nio.channels.Selector;
 import java.nio.channels.ServerSocketChannel;
 import java.util.Iterator;
-import blocking.BlockingManager;
+import blocking.ListBlockingManager;
+import blocking.StreamBlockingManager;
 import blocking.TimeoutScheduler;
 import commands.CommandRegistry;
 import common.Constants;
@@ -19,16 +20,20 @@ public final class Main {
     private final int port;
     private final StorageEngine storage;
     private final CommandDispatcher dispatcher;
-    private final BlockingManager blockingManager;
+    private final ListBlockingManager listBlockingManager;
+    private final StreamBlockingManager streamBlockingManager;
     private final TimeoutScheduler timeoutScheduler;
 
     public Main(int port) {
         this.port = port;
         this.storage = new InMemoryStorage();
-        this.blockingManager = new BlockingManager(storage);
-        this.timeoutScheduler = new TimeoutScheduler(blockingManager);
+        this.listBlockingManager = new ListBlockingManager(storage);
+        this.streamBlockingManager = new StreamBlockingManager(storage);
+        this.timeoutScheduler = new TimeoutScheduler(listBlockingManager, streamBlockingManager);
         this.dispatcher =
-                new CommandDispatcher(CommandRegistry.createDefault(blockingManager), storage);
+                new CommandDispatcher(
+                        CommandRegistry.createDefault(listBlockingManager, streamBlockingManager),
+                        storage);
     }
 
     public static void main(String[] args) {

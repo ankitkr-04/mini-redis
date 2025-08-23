@@ -1,6 +1,7 @@
 package commands.streams;
 
 import java.util.Map;
+import blocking.StreamBlockingManager;
 import commands.Command;
 import commands.CommandArgs;
 import commands.CommandResult;
@@ -9,6 +10,17 @@ import storage.expiry.ExpiryPolicy;
 import storage.interfaces.StorageEngine;
 
 public class AddStreamCommand implements Command {
+
+    private final StreamBlockingManager manager;
+
+    public AddStreamCommand(StreamBlockingManager blockingManager) {
+        this.manager = blockingManager;
+    }
+
+    @Override
+    public boolean requiresClient() {
+        return true;
+    }
 
     @Override
     public String name() {
@@ -26,6 +38,8 @@ public class AddStreamCommand implements Command {
         try {
             // semantic validation (ID ordering, duplicates) happens inside storage
             String entryId = storage.addStreamEntry(key, id, fields, ExpiryPolicy.never());
+            manager.notifyWaitingClients(key);
+
             return new CommandResult.Success(ResponseWriter.bulkString(entryId));
         } catch (IllegalArgumentException e) {
             // storage throws if semantic rules fail

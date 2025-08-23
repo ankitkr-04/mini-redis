@@ -2,7 +2,8 @@ package commands;
 
 import java.util.HashMap;
 import java.util.Map;
-import blocking.BlockingManager;
+import blocking.ListBlockingManager;
+import blocking.StreamBlockingManager;
 import commands.basic.EchoCommand;
 import commands.basic.PingCommand;
 import commands.basic.TypeCommand;
@@ -33,7 +34,8 @@ public final class CommandRegistry {
         return commands.get(name.toUpperCase());
     }
 
-    public static CommandRegistry createDefault(BlockingManager blockingManager) {
+    public static CommandRegistry createDefault(ListBlockingManager listblockingManager,
+            StreamBlockingManager streamBlockingManager) {
         CommandRegistry registry = new CommandRegistry();
 
         // Basic commands
@@ -46,7 +48,7 @@ public final class CommandRegistry {
         registry.register(new SetCommand());
 
         // List commands with shared implementations
-        var pushCommand = new PushCommand(blockingManager);
+        var pushCommand = new PushCommand(listblockingManager);
         registry.register("LPUSH", pushCommand);
         registry.register("RPUSH", pushCommand);
 
@@ -56,12 +58,12 @@ public final class CommandRegistry {
 
         registry.register(new RangeCommand());
         registry.register(new LengthCommand());
-        registry.register(new BlockingPopCommand(blockingManager));
+        registry.register(new BlockingPopCommand(listblockingManager));
 
         // Stream commands
-        registry.register(new AddStreamCommand());
+        registry.register(new AddStreamCommand(streamBlockingManager));
         registry.register(new RangeStreamCommand());
-        registry.register(new ReadStreamCommand());
+        registry.register(new ReadStreamCommand(streamBlockingManager));
         return registry;
     }
 

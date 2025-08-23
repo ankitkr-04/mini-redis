@@ -20,7 +20,7 @@ public class ListStorageEngine implements ListStorage {
         if (values.length == 0)
             return getListLength(key);
 
-        var result = store.compute(key, (k, existing) -> {
+        var result = store.compute(key, (_, existing) -> {
             return switch (existing) {
                 case null -> {
                     var list = ListValue.empty();
@@ -47,7 +47,7 @@ public class ListStorageEngine implements ListStorage {
         if (values.length == 0)
             return getListLength(key);
 
-        var result = store.compute(key, (k, existing) -> {
+        var result = store.compute(key, (_, existing) -> {
             return switch (existing) {
                 case null -> {
                     var list = ListValue.empty();

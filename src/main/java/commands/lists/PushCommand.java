@@ -1,6 +1,6 @@
 package commands.lists;
 
-import blocking.BlockingManager;
+import blocking.ListBlockingManager;
 import commands.Command;
 import commands.CommandArgs;
 import commands.CommandResult;
@@ -9,9 +9,9 @@ import server.protocol.ResponseWriter;
 import storage.interfaces.StorageEngine;
 
 public final class PushCommand implements Command {
-    private final BlockingManager blockingManager;
+    private final ListBlockingManager blockingManager;
 
-    public PushCommand(BlockingManager blockingManager) {
+    public PushCommand(ListBlockingManager blockingManager) {
         this.blockingManager = blockingManager;
     }
 
@@ -34,7 +34,7 @@ public final class PushCommand implements Command {
         };
 
         // Wake up blocked clients
-        blockingManager.notifyWaitingClients(key, storage);
+        blockingManager.notifyWaitingClients(key);
 
         return new CommandResult.Success(ResponseWriter.integer(newSize));
     }

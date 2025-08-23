@@ -3,102 +3,95 @@ package blocking;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.channels.SocketChannel;
-import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Queue;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
-import server.protocol.ResponseWriter;
 import storage.interfaces.StorageEngine;
 
-public final class BlockingManager {
-    private final Map<String, Queue<BlockedClient>> waitingClients = new ConcurrentHashMap<>();
-    private final StorageEngine storage;
+public abstract sealed class BlockingManager<T> permits ListBlockingManager, StreamBlockingManager {
+    protected final Map<String, Queue<BlockedClient>> waitingClients = new ConcurrentHashMap<>();
+    protected final StorageEngine storage;
 
-    public BlockingManager(StorageEngine storage) {
+    protected BlockingManager(StorageEngine storage) {
         this.storage = storage;
     }
 
-    public void blockClient(String key, SocketChannel client) {
-        BlockedClient blockedClient = BlockedClient.indefinite(client);
+    // Public API
+    public final void blockClient(String key, SocketChannel client, Optional<Double> timeoutMs) {
+        BlockedClient blockedClient = timeoutMs
+                .map(t -> BlockedClient.withTimeout(client, t))
+                .orElseGet(() -> BlockedClient.indefinite(client));
+
         waitingClients.computeIfAbsent(key, _ -> new ConcurrentLinkedQueue<>())
                 .offer(blockedClient);
     }
 
-    public void blockClient(String key, SocketChannel client, double timeoutMs) {
-        BlockedClient blockedClient = BlockedClient.withTimeout(client, timeoutMs);
-        waitingClients.computeIfAbsent(key, _ -> new ConcurrentLinkedQueue<>())
-                .offer(blockedClient);
+    public final void blockClient(String key, SocketChannel client) {
+        blockClient(key, client, Optional.empty());
     }
 
-    public void notifyWaitingClients(String key, StorageEngine storage) {
+    public void notifyWaitingClients(String key) {
         Queue<BlockedClient> queue = waitingClients.get(key);
         if (queue == null)
             return;
 
-        // Process waiting clients while list has elements
-        while (!queue.isEmpty() && storage.getListLength(key) > 0) {
+        while (!queue.isEmpty() && hasDataAvailable(key)) {
             BlockedClient client = queue.poll();
 
             if (client == null || client.isExpired()) {
                 continue;
             }
 
-            // Try to pop a value for this client
-            var value = storage.leftPop(key);
-            if (value.isEmpty()) {
-                break; // No more values available
-            }
-
-            // Send response to client
-            try {
-                ByteBuffer response = ResponseWriter.array(List.of(key, value.get()));
-                writeResponse(client.channel(), response);
-            } catch (IOException e) {
-                // Client disconnected, ignore
-                System.err.println("Failed to notify client: " + e.getMessage());
+            var data = retrieveData(key);
+            if (data.isPresent()) {
+                sendSuccessResponse(client, key, data.get());
+            } else {
+                break;
             }
         }
 
-        // Clean up empty queue
         if (queue.isEmpty()) {
             waitingClients.remove(key);
         }
     }
 
     public void removeExpiredClients() {
-        waitingClients.entrySet().removeIf(entry -> {
+        for (var entry : waitingClients.entrySet()) {
             Queue<BlockedClient> queue = entry.getValue();
-
-            // Send timeout responses to expired clients
-            queue.removeIf(client -> {
-                if (client.isExpired()) {
-                    try {
-                        writeResponse(client.channel(), ResponseWriter.bulkString(null));
-                    } catch (IOException e) {
-                        // Client disconnected, ignore
-                    }
-                    return true;
-                }
-                return false;
-            });
-
-            return queue.isEmpty();
-        });
+            queue.removeIf(BlockedClient::isExpired);
+            if (queue.isEmpty()) {
+                waitingClients.remove(entry.getKey());
+            }
+        }
     }
 
-    private void writeResponse(SocketChannel channel, ByteBuffer response) throws IOException {
+    public final Set<String> getWaitingKeys() {
+        return waitingClients.keySet();
+    }
+
+    // Utility Methods
+    protected final void writeResponse(SocketChannel channel, ByteBuffer response)
+            throws IOException {
         while (response.hasRemaining()) {
             channel.write(response);
         }
     }
 
-    public Set<String> getWaitingKeys() {
-        return waitingClients.keySet();
-    }
-
     public void clear() {
         waitingClients.clear();
     }
+
+    // Protected API
+    protected abstract boolean hasDataAvailable(String key);
+
+    protected abstract Optional<T> retrieveData(String key);
+
+    protected abstract void sendSuccessResponse(BlockedClient client, String key, T data);
+
+    protected abstract void sendTimeoutResponse(BlockedClient client);
+
+
 }

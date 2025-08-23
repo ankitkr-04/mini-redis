@@ -25,7 +25,7 @@ public class StreamStorageEngine implements StreamStorage {
     @Override
     public String addStreamEntry(String key, String id, Map<String, String> fields,
             ExpiryPolicy expiry) {
-        StreamValue streamValue = (StreamValue) store.compute(key, (k, existing) -> {
+        StreamValue streamValue = (StreamValue) store.compute(key, (_, existing) -> {
             if (existing instanceof StreamValue sv && !sv.isExpired())
                 return sv;
             return new StreamValue(new ConcurrentSkipListMap<>(), expiry);

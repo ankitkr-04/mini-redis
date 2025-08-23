@@ -1,7 +1,8 @@
 package commands.lists;
 
 import java.util.List;
-import blocking.BlockingManager;
+import java.util.Optional;
+import blocking.ListBlockingManager;
 import commands.Command;
 import commands.CommandArgs;
 import commands.CommandResult;
@@ -10,9 +11,9 @@ import server.protocol.ResponseWriter;
 import storage.interfaces.StorageEngine;
 
 public final class BlockingPopCommand implements Command {
-    private final BlockingManager blockingManager;
+    private final ListBlockingManager blockingManager;
 
-    public BlockingPopCommand(BlockingManager blockingManager) {
+    public BlockingPopCommand(ListBlockingManager blockingManager) {
         this.blockingManager = blockingManager;
     }
 
@@ -36,11 +37,10 @@ public final class BlockingPopCommand implements Command {
 
         // Block the client
         double timeoutMs = timeoutSeconds * 1000;
-        if (timeoutMs == 0) {
-            blockingManager.blockClient(key, args.clientChannel());
-        } else {
-            blockingManager.blockClient(key, args.clientChannel(), timeoutMs);
-        }
+
+        blockingManager.blockClient(key, args.clientChannel(),
+                timeoutMs == 0 ? Optional.empty() : Optional.of(timeoutMs));
+
 
         return new CommandResult.Async(); // No immediate response
     }
