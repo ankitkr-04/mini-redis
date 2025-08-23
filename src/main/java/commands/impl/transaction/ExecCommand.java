@@ -51,7 +51,7 @@ public final class ExecCommand extends WriteCommand {
         var results = new ArrayList<ByteBuffer>();
         for (var queued : queuedCommands) {
             try {
-                var result = queued.command().execute(args, storage);
+                var result = queued.command().execute(queued.args(), storage);
                 if (result instanceof CommandResult.Success success) {
                     results.add(success.response());
                 } else if (result instanceof CommandResult.Error error) {
