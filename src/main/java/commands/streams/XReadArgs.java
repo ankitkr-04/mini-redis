@@ -1,8 +1,10 @@
 package commands.streams;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import commands.CommandArgs;
+import storage.interfaces.StorageEngine;
 
 public record XReadArgs(
         Optional<Integer> count,
@@ -52,5 +54,24 @@ public record XReadArgs(
                 blockMs >= 0 ? Optional.of(blockMs) : Optional.empty(),
                 keys,
                 ids);
+    }
+
+    /**
+     * Return a new XReadArgs where any "$" id is replaced by the current last stream ID
+     * for that key (or "0-0" if the stream doesn't yet exist).
+     */
+    public XReadArgs withResolvedIds(StorageEngine storage) {
+        List<String> resolved = new ArrayList<>(ids.size());
+        for (int i = 0; i < keys.size(); i++) {
+            String key = keys.get(i);
+            String id = ids.get(i);
+            if ("$".equals(id)) {
+                Optional<String> last = storage.getLastStreamId(key);
+                resolved.add(last.orElse("0-0"));
+            } else {
+                resolved.add(id);
+            }
+        }
+        return new XReadArgs(count, blockMs, keys, List.copyOf(resolved));
     }
 }

@@ -3,6 +3,7 @@ package commands.streams;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import blocking.StreamBlockingManager;
 import commands.Command;
 import commands.CommandArgs;
@@ -36,8 +37,11 @@ public final class ReadStreamCommand implements Command {
             return new CommandResult.Error(e.getMessage());
         }
 
-        // Try immediate (non-blocking) read first
-        List<ByteBuffer> streamResponses = buildStreamResponses(parsed, storage);
+        // Resolve "$" ids to current last IDs (or "0-0" if none)
+        XReadArgs resolvedArgs = parsed.withResolvedIds(storage);
+
+        // Try immediate (non-blocking) read first using resolved IDs
+        List<ByteBuffer> streamResponses = buildStreamResponses(resolvedArgs, storage);
 
         // If we have data OR no blocking requested, return immediately
         if (!streamResponses.isEmpty() || parsed.blockMs().isEmpty()) {
@@ -47,11 +51,14 @@ public final class ReadStreamCommand implements Command {
                             : ResponseWriter.arrayOfBuffers(streamResponses));
         }
 
-        // No immediate data and blocking requested - block the client
-        var timeoutForBlocking = parsed.blockMs().filter(ms -> ms > 0);
+        // No immediate data and blocking requested - block the client.
+        // Convert BLOCK 0 into indefinite by mapping 0 -> empty Optional for timeout.
+        var timeoutForBlocking =
+                parsed.blockMs().flatMap(ms -> ms > 0 ? Optional.of(ms) : Optional.empty());
+
         blockingManager.blockClientForStreams(
-                parsed.keys(),
-                parsed.ids(),
+                resolvedArgs.keys(),
+                resolvedArgs.ids(),
                 args.clientChannel(),
                 timeoutForBlocking);
 
@@ -59,7 +66,7 @@ public final class ReadStreamCommand implements Command {
     }
 
     /**
-     * Builds RESP-ready stream responses for given parsed XREAD args.
+     * Builds RESP-ready stream responses for given parsed (and resolved) XREAD args.
      */
     private List<ByteBuffer> buildStreamResponses(XReadArgs parsed, StorageEngine storage) {
         List<ByteBuffer> responses = new ArrayList<>();
