@@ -1,31 +1,30 @@
 package blocking;
 
-import java.util.Arrays;
-import java.util.List;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
-import common.Constants;
+import config.ServerConfig;
 
-public class TimeoutScheduler {
+public final class TimeoutScheduler {
     private final ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor(
             Thread.ofVirtual().name("timeout-scheduler").factory());
-    private final List<BlockingManager<?>> blockingManagers;
+    private final BlockingManager blockingManager;
 
-    public TimeoutScheduler(BlockingManager<?>... blockingManagers) {
-        this.blockingManagers = Arrays.asList(blockingManagers);
+    public TimeoutScheduler(BlockingManager blockingManager) {
+        this.blockingManager = blockingManager;
     }
 
     public void start() {
-        scheduler.scheduleAtFixedRate(this::cleanupExpiredClients, Constants.CLEANUP_INTERVAL_MS,
-                Constants.CLEANUP_INTERVAL_MS, TimeUnit.MILLISECONDS);
+        scheduler.scheduleAtFixedRate(
+                this::cleanupExpiredClients,
+                ServerConfig.CLEANUP_INTERVAL_MS,
+                ServerConfig.CLEANUP_INTERVAL_MS,
+                TimeUnit.MILLISECONDS);
     }
 
     private void cleanupExpiredClients() {
         try {
-            for (var m : blockingManagers) {
-                m.removeExpiredClients();
-            }
+            blockingManager.removeExpiredClients();
         } catch (Exception e) {
             System.err.println("Error during timeout cleanup: " + e.getMessage());
         }
@@ -42,5 +41,4 @@ public class TimeoutScheduler {
             Thread.currentThread().interrupt();
         }
     }
-
 }

@@ -4,14 +4,14 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.locks.StampedLock;
-import common.Constants;
+import config.RedisConstants;
 
 /**
  * High-performance list implementation using chunked storage. Optimized for Redis-like operations
  * with O(1) push/pop at both ends.
  */
 public final class QuickList<T> {
-    private static final int NODE_CAPACITY = Constants.LIST_NODE_CAPACITY;
+    private static final int NODE_CAPACITY = RedisConstants.LIST_NODE_CAPACITY;
 
     private static final class Node<T> {
         @SuppressWarnings("unchecked")
@@ -40,9 +40,9 @@ public final class QuickList<T> {
             return start == end;
         }
 
-        boolean isFull() {
-            return start == 0 && end == NODE_CAPACITY;
-        }
+        // boolean isFull() {
+        // return start == 0 && end == NODE_CAPACITY;
+        // }
     }
 
     private Node<T> head, tail;

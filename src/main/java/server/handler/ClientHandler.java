@@ -6,9 +6,10 @@ import java.nio.channels.SelectionKey;
 import java.nio.channels.Selector;
 import java.nio.channels.ServerSocketChannel;
 import java.nio.channels.SocketChannel;
-import common.Constants;
-import server.protocol.CommandDispatcher;
-import server.protocol.ProtocolParser;
+import config.ServerConfig;
+import protocol.CommandDispatcher;
+import protocol.ProtocolParser;
+
 
 public class ClientHandler {
     private ClientHandler() {} // Utility class
@@ -20,7 +21,7 @@ public class ClientHandler {
         if (clientChannel != null) {
             clientChannel.configureBlocking(false);
             clientChannel.register(selector, SelectionKey.OP_READ,
-                    ByteBuffer.allocate(Constants.BUFFER_SIZE));
+                    ByteBuffer.allocate(ServerConfig.BUFFER_SIZE));
             System.out.println("Client connected: " + clientChannel.getRemoteAddress());
         }
     }

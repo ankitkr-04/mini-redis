@@ -8,9 +8,9 @@ public record BlockedClient(SocketChannel channel, Instant blockedAt, Instant ti
         return new BlockedClient(channel, Instant.now(), null);
     }
 
-    public static BlockedClient withTimeout(SocketChannel channel, double timeoutMs) {
+    public static BlockedClient withTimeout(SocketChannel channel, long timeoutMs) {
         Instant now = Instant.now();
-        Instant timeout = now.plusMillis((long) timeoutMs);
+        Instant timeout = now.plusMillis(timeoutMs);
         return new BlockedClient(channel, now, timeout);
     }
 

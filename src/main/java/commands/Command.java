@@ -1,15 +1,13 @@
 package commands;
 
-import storage.interfaces.StorageEngine;
+import storage.StorageService;
 
 public interface Command {
     String name();
-
-    CommandResult execute(CommandArgs args, StorageEngine storage);
-
+    CommandResult execute(CommandArgs args, StorageService storage);
     boolean validate(CommandArgs args);
-
+    
     default boolean requiresClient() {
-        return false; // Most commands don't need client channel
+        return false;
     }
 }

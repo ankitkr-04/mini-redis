@@ -2,16 +2,19 @@ module redis {
     exports blocking;
     exports collections;
     exports commands;
-    exports commands.basic;
-    exports commands.lists;
-    exports commands.streams;
-    exports commands.strings;
-    exports common;
+    exports commands.base;
+    exports commands.registry;
+    exports commands.impl.basic;
+    exports commands.impl.lists;
+    exports commands.impl.streams;
+    exports commands.impl.strings;
+    exports events;
+    exports errors;
     exports server.handler;
-    exports server.protocol;
+    exports protocol;
     exports storage;
     exports storage.expiry;
-    exports storage.interfaces;
+    exports storage.repositories;
     exports storage.types;
     exports storage.types.streams;
 }
