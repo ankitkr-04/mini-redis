@@ -43,17 +43,34 @@ public final class StringRepository implements Repository<String> {
     }
 
     public long increment(String key) {
-        if (!exists(key))
-            put(key, "0", ExpiryPolicy.never());
-        if (getType(key) != ValueType.STRING)
-            throw new IllegalStateException(ErrorCode.WRONG_TYPE.getMessage());
-        String currentValue = get(key).orElse("0");
-        long val = Long.parseLong(currentValue.trim());
-        if (val == Long.MAX_VALUE)
+        ensureStringKeyExists(key);
+
+        long val = parseLongValue(get(key).orElse("0"));
+
+        if (val == Long.MAX_VALUE) {
             throw new NumberFormatException("ERR increment or decrement would overflow");
-        val += 1;
-        put(key, Long.toString(val), ExpiryPolicy.never());
-        return val;
+        }
+
+        long newVal = val + 1;
+        put(key, Long.toString(newVal), ExpiryPolicy.never());
+        return newVal;
+    }
+
+    private void ensureStringKeyExists(String key) {
+        if (!exists(key)) {
+            put(key, "0", ExpiryPolicy.never());
+        }
+        if (getType(key) != ValueType.STRING) {
+            throw new IllegalStateException(ErrorCode.WRONG_TYPE.getMessage());
+        }
+    }
+
+    private long parseLongValue(String value) {
+        try {
+            return Long.parseLong(value.trim());
+        } catch (Exception e) {
+            throw new NumberFormatException(ErrorCode.INVALID_INTEGER.getMessage());
+        }
     }
 
     private Optional<StoredValue<?>> getValidValue(String key) {
