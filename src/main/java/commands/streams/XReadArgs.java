@@ -2,13 +2,14 @@ package commands.streams;
 
 import java.util.List;
 import java.util.Optional;
+import commands.CommandArgs;
 
 public record XReadArgs(
         Optional<Integer> count,
         Optional<Long> blockMs,
         List<String> keys,
         List<String> ids) {
-    public static XReadArgs parse(commands.CommandArgs args) {
+    public static XReadArgs parse(CommandArgs args) {
         int count = -1;
         long blockMs = -1;
         int i = 1;

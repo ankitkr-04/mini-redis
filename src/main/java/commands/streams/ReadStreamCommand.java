@@ -6,7 +6,6 @@ import java.util.List;
 import commands.Command;
 import commands.CommandArgs;
 import commands.CommandResult;
-import common.ValidationUtil;
 import server.protocol.ResponseWriter;
 import storage.interfaces.StorageEngine;
 
@@ -61,7 +60,6 @@ public final class ReadStreamCommand implements Command {
 
     @Override
     public boolean validate(CommandArgs args) {
-        return args.argCount() == 4
-                || (args.argCount() == 6 && ValidationUtil.isValidInteger(args.arg(5)));
+        return args.argCount() >= 4;
     }
 }
