@@ -1,13 +1,14 @@
 package core;
 
-import config.ServerConfig;
-import server.handler.ClientHandler;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.nio.channels.SelectionKey;
 import java.nio.channels.Selector;
 import java.nio.channels.ServerSocketChannel;
 import java.util.Iterator;
+import config.CommandLineParser;
+import config.ServerConfig;
+import server.handler.ClientHandler;
 
 public final class Server {
     private final int port;
@@ -19,7 +20,10 @@ public final class Server {
     }
 
     public static void main(String[] args) {
-        new Server(ServerConfig.DEFAULT_PORT).start();
+        // port argument can be passed, --port 6380
+        var options = CommandLineParser.parse(args);
+        int port = CommandLineParser.getIntOption(options, "port", ServerConfig.DEFAULT_PORT);
+        new Server(port).start();
     }
 
     public void start() {
