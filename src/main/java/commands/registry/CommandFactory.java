@@ -13,6 +13,7 @@ import commands.impl.streams.AddStreamCommand;
 import commands.impl.streams.RangeStreamCommand;
 import commands.impl.streams.ReadStreamCommand;
 import commands.impl.strings.GetCommand;
+import commands.impl.strings.IncrCommand;
 import commands.impl.strings.SetCommand;
 import events.StorageEventPublisher;
 
@@ -30,6 +31,7 @@ public final class CommandFactory {
         // String commands
         registry.register(new GetCommand());
         registry.register(new SetCommand(eventPublisher));
+        registry.register(new IncrCommand(eventPublisher));
 
         // List commands
         var pushCommand = new PushCommand(eventPublisher);

@@ -29,6 +29,7 @@ public final class ListRepository implements Repository<QuickList<String>> {
                 .map(ListValue.class::cast)
                 .map(ListValue::value);
     }
+    
 
     @Override
     public boolean delete(String key) {

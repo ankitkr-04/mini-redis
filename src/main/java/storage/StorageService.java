@@ -33,6 +33,10 @@ public final class StorageService {
         return stringRepo.get(key);
     }
 
+    public long incrementString(String key) {
+        return stringRepo.increment(key);
+    }
+
     // List operations
     public int leftPush(String key, String... values) {
         return listRepo.pushLeft(key, values);

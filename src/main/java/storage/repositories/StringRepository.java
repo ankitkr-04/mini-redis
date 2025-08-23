@@ -2,6 +2,7 @@ package storage.repositories;
 
 import java.util.Map;
 import java.util.Optional;
+import errors.ErrorCode;
 import storage.Repository;
 import storage.expiry.ExpiryPolicy;
 import storage.types.StoredValue;
@@ -43,6 +44,33 @@ public final class StringRepository implements Repository<String> {
         return getValidValue(key)
                 .map(StoredValue::type)
                 .orElse(ValueType.NONE);
+    }
+
+    // change signature to return long
+    public long increment(String key) {
+        if (!exists(key)) {
+            put(key, "0", ExpiryPolicy.never());
+        }
+
+        // ensure it's a string value
+        if (getType(key) != ValueType.STRING) {
+            throw new IllegalStateException(ErrorCode.WRONG_TYPE.getMessage());
+        }
+
+        String currentValue = get(key).orElse("0");
+        try {
+            long val = Long.parseLong(currentValue.trim());
+            if (val == Long.MAX_VALUE) {
+                // match Redis behaviour: overflow error
+                throw new NumberFormatException("ERR increment or decrement would overflow");
+            }
+            val = val + 1L;
+            put(key, Long.toString(val), ExpiryPolicy.never());
+            return val;
+        } catch (NumberFormatException e) {
+            // normalize error message so upper layers can return it
+            throw new NumberFormatException(ErrorCode.INVALID_INTEGER.getMessage());
+        }
     }
 
     private Optional<StoredValue<?>> getValidValue(String key) {
