@@ -9,6 +9,8 @@ import commands.impl.lists.LengthCommand;
 import commands.impl.lists.PopCommand;
 import commands.impl.lists.PushCommand;
 import commands.impl.lists.RangeCommand;
+import commands.impl.replication.PsyncCommand;
+import commands.impl.replication.ReplconfCommand;
 import commands.impl.streams.AddStreamCommand;
 import commands.impl.streams.RangeStreamCommand;
 import commands.impl.streams.ReadStreamCommand;
@@ -31,6 +33,11 @@ public final class CommandFactory {
         registry.register(new EchoCommand());
         registry.register(new TypeCommand());
         registry.register(new InfoCommand(context.getServerInfo()));
+
+        // Replication commands
+
+        registry.register(new ReplconfCommand(context));
+        registry.register(new PsyncCommand(context));
 
         // String commands
         registry.register(new GetCommand());

@@ -33,20 +33,19 @@ public final class ServerContext implements StorageEventPublisher {
 
         this.transactionManager = new TransactionManager();
         this.serverInfo = new ServerInfo(options);
-        this.commandRegistry =
-                CommandFactory.createDefault(this);
+        this.commandRegistry = CommandFactory.createDefault(this);
         this.commandDispatcher =
                 new CommandDispatcher(commandRegistry, storageService, transactionManager);
 
         this.timeoutScheduler = new TimeoutScheduler(blockingManager);
         this.replicationClient =
                 options.masterInfo()
-                        .map(info -> new ReplicationClient(info, serverInfo.getReplicationInfo()))
+                        .map(info -> new ReplicationClient(info, serverInfo.getReplicationInfo(),
+                                port))
                         .orElse(null);
-
     }
 
-    public int getPort() { // Add this
+    public int getPort() {
         return port;
     }
 
@@ -55,8 +54,10 @@ public final class ServerContext implements StorageEventPublisher {
         if (replicationClient != null) {
             try {
                 replicationClient.register(selector);
+                System.out.println("Replication client registered for master connection");
             } catch (IOException e) {
                 System.err.println("Failed to start replication client: " + e.getMessage());
+                e.printStackTrace();
             }
         }
     }
@@ -93,6 +94,10 @@ public final class ServerContext implements StorageEventPublisher {
 
     public ServerInfo getServerInfo() {
         return serverInfo;
+    }
+
+    public ReplicationClient getReplicationClient() {
+        return replicationClient;
     }
 
     // StorageEventPublisher implementation
