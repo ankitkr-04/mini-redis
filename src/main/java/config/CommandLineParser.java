@@ -96,7 +96,7 @@ public final class CommandLineParser {
 
     public static String getStringOption(Map<String, String> options, String key,
             String defaultValue) {
-        return parseOption(options, key, defaultValue, (value, k) -> value);
+        return parseOption(options, key, defaultValue, (value, _) -> value);
     }
 
     public static boolean getBooleanOption(Map<String, String> options, String key,

@@ -9,6 +9,7 @@ import java.util.Iterator;
 import config.CommandLineParser;
 import server.ServerOptions;
 import server.handler.ClientHandler;
+import server.replication.ReplicationClient; // Add import
 
 public final class Server {
     private final int port;
@@ -22,7 +23,7 @@ public final class Server {
     public static void main(String[] args) {
         var parseResult = CommandLineParser.parse(args);
         if (!parseResult.getErrors().isEmpty()) {
-            parseResult.getErrors().forEach((key, error) -> System.err.println(error));
+            parseResult.getErrors().forEach((_, error) -> System.err.println(error));
             System.exit(1);
         }
         var serverOptions = ServerOptions.from(parseResult.getOptions());
@@ -32,14 +33,14 @@ public final class Server {
     public void start() {
         System.out.println("Starting Redis Server on port " + port + "...");
 
-        context.start();
-
         try (ServerSocketChannel serverChannel = ServerSocketChannel.open();
                 Selector selector = Selector.open()) {
 
             serverChannel.configureBlocking(false);
             serverChannel.bind(new InetSocketAddress(port));
             serverChannel.register(selector, SelectionKey.OP_ACCEPT);
+
+            context.start(selector);
 
             System.out.println("Server ready and listening on port " + port);
 
@@ -54,7 +55,17 @@ public final class Server {
                     if (key.isAcceptable()) {
                         ClientHandler.acceptConnection(key, selector);
                     } else if (key.isReadable()) {
-                        ClientHandler.handleClient(key, context.getCommandDispatcher());
+                        Object attachment = key.attachment();
+                        if (attachment instanceof ReplicationClient) {
+                            ((ReplicationClient) attachment).handleKey(key);
+                        } else {
+                            ClientHandler.handleClient(key, context.getCommandDispatcher());
+                        }
+                    } else if (key.isConnectable()) {
+                        Object attachment = key.attachment();
+                        if (attachment instanceof ReplicationClient) {
+                            ((ReplicationClient) attachment).handleKey(key);
+                        }
                     }
                 }
             }

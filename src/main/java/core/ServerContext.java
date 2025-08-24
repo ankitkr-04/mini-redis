@@ -1,5 +1,7 @@
 package core;
 
+import java.io.IOException;
+import java.nio.channels.Selector;
 import blocking.BlockingManager;
 import blocking.TimeoutScheduler;
 import commands.registry.CommandFactory;
@@ -8,6 +10,7 @@ import events.StorageEventPublisher;
 import protocol.CommandDispatcher;
 import server.ServerInfo;
 import server.ServerOptions;
+import server.replication.ReplicationClient;
 import storage.StorageService;
 import transaction.TransactionManager;
 
@@ -21,7 +24,7 @@ public final class ServerContext implements StorageEventPublisher {
     private final TimeoutScheduler timeoutScheduler;
     private final TransactionManager transactionManager;
     private final ServerInfo serverInfo;
-
+    private final ReplicationClient replicationClient;
 
     public ServerContext(ServerOptions options) {
         this.port = options.port();
@@ -36,6 +39,10 @@ public final class ServerContext implements StorageEventPublisher {
                 new CommandDispatcher(commandRegistry, storageService, transactionManager);
 
         this.timeoutScheduler = new TimeoutScheduler(blockingManager);
+        this.replicationClient =
+                options.masterInfo()
+                        .map(info -> new ReplicationClient(info, serverInfo.getReplicationInfo()))
+                        .orElse(null);
 
     }
 
@@ -43,12 +50,22 @@ public final class ServerContext implements StorageEventPublisher {
         return port;
     }
 
-    public void start() {
+    public void start(Selector selector) {
         timeoutScheduler.start();
+        if (replicationClient != null) {
+            try {
+                replicationClient.register(selector);
+            } catch (IOException e) {
+                System.err.println("Failed to start replication client: " + e.getMessage());
+            }
+        }
     }
 
     public void shutdown() {
         timeoutScheduler.shutdown();
+        if (replicationClient != null) {
+            replicationClient.shutdown();
+        }
         blockingManager.clear();
         storageService.clear();
     }

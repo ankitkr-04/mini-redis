@@ -15,7 +15,7 @@ module redis {
     exports protocol;
     exports server;
     exports server.handler;
-    exports server.info;
+    exports server.replication;
     exports storage;
     exports storage.expiry;
     exports storage.repositories;

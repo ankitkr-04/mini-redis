@@ -4,7 +4,7 @@ import java.nio.ByteBuffer;
 import java.util.Map;
 import config.RedisConstants;
 import protocol.ResponseBuilder;
-import server.info.ReplicationInfo;
+import server.replication.ReplicationInfo;
 
 public class ServerInfo {
     private static final String REPLICATION_SECTION = "replication";
@@ -15,7 +15,7 @@ public class ServerInfo {
 
     public ServerInfo(ServerOptions options) {
         this.options = options;
-        this.replicationInfo = new ReplicationInfo(options.masterInfo(), options.replBacklogSize());
+        this.replicationInfo = new ReplicationInfo(this.options.masterInfo(), this.options.replBacklogSize());
     }
 
     public ReplicationInfo getReplicationInfo() {
