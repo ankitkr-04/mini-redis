@@ -1,13 +1,15 @@
-package protocol;
+package protocol.parser;
 
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
-import config.RedisConstants;
+
+import config.ProtocolConstants;
 
 public final class ProtocolParser {
     private static final String[] EMPTY_RESULT = new String[0];
 
-    private ProtocolParser() {} // Utility class
+    private ProtocolParser() {
+    } // Utility class
 
     public static String[] parse(ByteBuffer buffer) {
         String message = extractString(buffer);
@@ -16,7 +18,7 @@ public final class ProtocolParser {
             return EMPTY_RESULT;
         }
 
-        return message.charAt(0) == '*' ? parseArray(message) : new String[] {message.trim()};
+        return message.charAt(0) == ProtocolConstants.ARRAY ? parseArray(message) : new String[] { message.trim() };
     }
 
     private static String extractString(ByteBuffer buffer) {
@@ -26,7 +28,7 @@ public final class ProtocolParser {
     }
 
     private static String[] parseArray(String message) {
-        String[] lines = message.split(RedisConstants.CRLF);
+        String[] lines = message.split(ProtocolConstants.CRLF);
 
         if (lines.length < 2) {
             return EMPTY_RESULT;
@@ -42,7 +44,7 @@ public final class ProtocolParser {
             int lineIndex = 1;
 
             while (lineIndex < lines.length && resultIndex < arraySize) {
-                if (lines[lineIndex].startsWith("$")) {
+                if (lines[lineIndex].startsWith(String.valueOf(ProtocolConstants.BULK_STRING))) {
                     int contentIndex = lineIndex + 1;
                     if (contentIndex < lines.length) {
                         result[resultIndex++] = lines[contentIndex];

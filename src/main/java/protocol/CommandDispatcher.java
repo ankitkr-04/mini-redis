@@ -2,6 +2,7 @@ package protocol;
 
 import java.nio.ByteBuffer;
 import java.nio.channels.SocketChannel;
+
 import commands.Command;
 import commands.CommandArgs;
 import commands.CommandResult;
@@ -9,7 +10,8 @@ import commands.impl.transaction.DiscardCommand;
 import commands.impl.transaction.ExecCommand;
 import commands.impl.transaction.MultiCommand;
 import commands.registry.CommandRegistry;
-import config.RedisConstants;
+import config.ProtocolConstants;
+import core.ServerContext;
 import errors.ErrorCode;
 import storage.StorageService;
 import transaction.TransactionManager;
@@ -19,12 +21,14 @@ public final class CommandDispatcher {
     private final CommandRegistry registry;
     private final StorageService storage;
     private final TransactionManager transactionManager;
+    private final ServerContext context;
 
     public CommandDispatcher(CommandRegistry registry, StorageService storage,
-            TransactionManager transactionManager) {
+            TransactionManager transactionManager, ServerContext context) {
         this.registry = registry;
         this.storage = storage;
         this.transactionManager = transactionManager;
+        this.context = context;
     }
 
     public ByteBuffer dispatch(String[] rawArgs, SocketChannel clientChannel) {
@@ -63,7 +67,7 @@ public final class CommandDispatcher {
     private ByteBuffer queueTransactionCommand(
             TransactionState state, Command command, CommandArgs args) {
         state.queueCommand(command, args);
-        return ResponseBuilder.encode(RedisConstants.QUEUED_RESPONSE);
+        return ResponseBuilder.encode(ProtocolConstants.RESP_QUEUED);
     }
 
     private ByteBuffer executeCommand(Command command, CommandArgs args) {

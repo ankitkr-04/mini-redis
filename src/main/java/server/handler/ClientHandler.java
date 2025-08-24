@@ -6,9 +6,10 @@ import java.nio.channels.SelectionKey;
 import java.nio.channels.Selector;
 import java.nio.channels.ServerSocketChannel;
 import java.nio.channels.SocketChannel;
+
 import config.ServerConfig;
 import protocol.CommandDispatcher;
-import protocol.ProtocolParser;
+import protocol.parser.ProtocolParser;
 
 
 public class ClientHandler {

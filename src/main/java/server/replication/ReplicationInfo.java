@@ -7,22 +7,18 @@ import java.util.Optional;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
-import config.CommandLineParser.MasterInfo;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import config.ProtocolConstants;
+import config.ProtocolConstants.Role;
+import protocol.parser.CommandLineParser.MasterInfo;
 
 public class ReplicationInfo {
-    public static final String ROLE = "role";
-    public static final String MASTER_REPLID = "master_replid";
-    public static final String CONNECTED_SLAVES = "connected_slaves";
-    public static final String MASTER_REPL_OFFSET = "master_repl_offset";
-    public static final String REPL_BACKLOG_ACTIVE = "repl_backlog_active";
-    public static final String REPL_BACKLOG_SIZE = "repl_backlog_size";
-    public static final String REPL_BACKLOG_FIRST_BYTE_OFFSET = "repl_backlog_first_byte_offset";
-    public static final String REPL_BACKLOG_HISTLEN = "repl_backlog_histlen";
-    public static final String MASTER_HOST = "master_host";
-    public static final String MASTER_PORT = "master_port";
-    public static final String HANDSHAKE_STATUS = "handshake_status";
+    private static final Logger log = LoggerFactory.getLogger(ReplicationInfo.class);
 
-    private String role;
+    private volatile Role role;
     private final String masterReplId;
     private final AtomicInteger connectedSlaves;
     private final AtomicLong masterReplOffset;
@@ -34,22 +30,8 @@ public class ReplicationInfo {
     private final int masterPort;
     private volatile boolean handshakeCompleted;
 
-    public enum Role {
-        MASTER("master"), SLAVE("slave");
-
-        private final String role;
-
-        Role(String role) {
-            this.role = role;
-        }
-
-        public String getRole() {
-            return role;
-        }
-    }
-
     public ReplicationInfo(Optional<MasterInfo> masterInfo, long replBacklogSize) {
-        this.role = masterInfo.isPresent() ? Role.SLAVE.getRole() : Role.MASTER.getRole();
+        this.role = masterInfo.isPresent() ? Role.SLAVE : Role.MASTER;
         this.masterReplId = generateReplId();
         this.connectedSlaves = new AtomicInteger(0);
         this.masterReplOffset = new AtomicLong(0);
@@ -60,37 +42,43 @@ public class ReplicationInfo {
         this.masterHost = masterInfo.map(MasterInfo::host).orElse(null);
         this.masterPort = masterInfo.map(MasterInfo::port).orElse(0);
         this.handshakeCompleted = false;
+
+        log.info("Initialized replication info - Role: {}, Master: {}:{}",
+                role, masterHost, masterPort);
     }
 
     public void setHandshakeCompleted(boolean completed) {
         this.handshakeCompleted = completed;
+        if (completed) {
+            log.info("Replication handshake completed successfully");
+        }
     }
 
     public Map<String, String> toInfoMap() {
         Map<String, String> info = new LinkedHashMap<>();
-        info.put(ROLE, role);
-        info.put(MASTER_REPLID, masterReplId);
-        info.put(CONNECTED_SLAVES, String.valueOf(connectedSlaves.get()));
-        info.put(MASTER_REPL_OFFSET, String.valueOf(masterReplOffset.get()));
-        info.put(REPL_BACKLOG_ACTIVE, String.valueOf(replBacklogActive.get() ? 1 : 0));
-        info.put(REPL_BACKLOG_SIZE, String.valueOf(replBacklogSize));
-        info.put(REPL_BACKLOG_FIRST_BYTE_OFFSET, String.valueOf(replBacklogFirstByteOffset.get()));
-        info.put(REPL_BACKLOG_HISTLEN, String.valueOf(replBacklogHistlen.get()));
-        if (masterHost != null) {
-            info.put(MASTER_HOST, masterHost);
-        }
-        if (masterPort != 0) {
-            info.put(MASTER_PORT, String.valueOf(masterPort));
-        }
-        info.put(HANDSHAKE_STATUS, handshakeCompleted ? "completed" : "in_progress");
+        info.put(ProtocolConstants.ROLE_FIELD, role.getValue());
+        info.put(ProtocolConstants.MASTER_REPLID_FIELD, masterReplId);
+        info.put(ProtocolConstants.CONNECTED_SLAVES_FIELD, String.valueOf(connectedSlaves.get()));
+        info.put(ProtocolConstants.MASTER_REPL_OFFSET_FIELD, String.valueOf(masterReplOffset.get()));
+        info.put(ProtocolConstants.MASTER_HOST_FIELD, masterHost != null ? masterHost : "");
+        info.put(ProtocolConstants.MASTER_PORT_FIELD, String.valueOf(masterPort));
+        info.put(ProtocolConstants.HANDSHAKE_STATUS_FIELD, handshakeCompleted ? "completed" : "in_progress");
+
+        // backlog details
+        info.put("repl_backlog_active", String.valueOf(replBacklogActive.get() ? 1 : 0));
+        info.put("repl_backlog_size", String.valueOf(replBacklogSize));
+        info.put("repl_backlog_first_byte_offset", String.valueOf(replBacklogFirstByteOffset.get()));
+        info.put("repl_backlog_histlen", String.valueOf(replBacklogHistlen.get()));
+
         return info;
     }
 
-    public String getRole() {
+    // Getters and setters
+    public Role getRole() {
         return role;
     }
 
-    public void setRole(String role) {
+    public void setRole(Role role) {
         this.role = role;
     }
 
@@ -130,16 +118,23 @@ public class ReplicationInfo {
         return masterPort;
     }
 
+    public boolean isHandshakeCompleted() {
+        return handshakeCompleted;
+    }
+
     public void incrementSlaves() {
-        connectedSlaves.incrementAndGet();
+        int current = connectedSlaves.incrementAndGet();
+        log.debug("Incremented slave count to: {}", current);
     }
 
     public void decrementSlaves() {
-        connectedSlaves.decrementAndGet();
+        int current = connectedSlaves.decrementAndGet();
+        log.debug("Decremented slave count to: {}", current);
     }
 
     public void incrementReplOffset(long bytes) {
-        masterReplOffset.addAndGet(bytes);
+        long newOffset = masterReplOffset.addAndGet(bytes);
+        log.trace("Incremented replication offset by {} to {}", bytes, newOffset);
     }
 
     private static String generateReplId() {

@@ -1,6 +1,7 @@
 package commands.impl.streams;
 
 import java.util.Map;
+
 import commands.CommandArgs;
 import commands.CommandResult;
 import commands.base.WriteCommand;
@@ -31,8 +32,7 @@ public class AddStreamCommand extends WriteCommand {
             return res;
 
         if ((args.argCount() - 3) % 2 != 0) {
-            return ValidationResult
-                    .invalid(ServerError.validation(ErrorCode.WRONG_ARG_COUNT.getMessage()));
+            return ValidationResult.invalid(ServerError.validation(ErrorCode.WRONG_ARG_COUNT.getMessage()));
         }
 
         return ValidationUtils.validateStreamId(args.arg(2));
@@ -47,6 +47,10 @@ public class AddStreamCommand extends WriteCommand {
         try {
             String entryId = storage.addStreamEntry(key, id, fields, ExpiryPolicy.never());
             publishDataAdded(key);
+
+            // Propagate to replicas
+            propagateCommand(args.rawArgs());
+
             return new CommandResult.Success(ResponseBuilder.bulkString(entryId));
         } catch (IllegalArgumentException e) {
             return new CommandResult.Error(e.getMessage());

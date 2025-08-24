@@ -4,11 +4,12 @@ import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+
 import blocking.BlockingManager;
 import commands.CommandArgs;
 import commands.CommandResult;
 import commands.base.BlockingCommand;
-import config.RedisConstants;
+import config.ProtocolConstants;
 import errors.ServerError;
 import protocol.ResponseBuilder;
 import storage.StorageService;
@@ -52,12 +53,11 @@ public final class ReadStreamCommand extends BlockingCommand {
         if (!streamResponses.isEmpty() || parsed.blockMs().isEmpty()) {
             return new CommandResult.Success(
                     streamResponses.isEmpty()
-                            ? ResponseBuilder.encode(RedisConstants.EMPTY_ARRAY)
+                            ? ResponseBuilder.encode(ProtocolConstants.RESP_EMPTY_ARRAY)
                             : ResponseBuilder.arrayOfBuffers(streamResponses));
         }
 
-        var timeoutForBlocking =
-                parsed.blockMs().flatMap(ms -> ms > 0 ? Optional.of(ms) : Optional.empty());
+        var timeoutForBlocking = parsed.blockMs().flatMap(ms -> ms > 0 ? Optional.of(ms) : Optional.empty());
 
         blockingManager.blockClientForStreams(
                 resolvedArgs.keys(),

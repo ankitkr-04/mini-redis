@@ -3,7 +3,7 @@ package commands.impl.basic;
 import commands.CommandArgs;
 import commands.CommandResult;
 import commands.base.ReadCommand;
-import config.RedisConstants;
+import config.ProtocolConstants;
 import protocol.ResponseBuilder;
 import storage.StorageService;
 import validation.ValidationResult;
@@ -23,6 +23,6 @@ public final class PingCommand extends ReadCommand {
     @Override
     protected CommandResult executeCommand(CommandArgs args, StorageService storage) {
         return new CommandResult.Success(
-                ResponseBuilder.encode(RedisConstants.PONG_RESPONSE));
+                ResponseBuilder.encode(ProtocolConstants.RESP_PONG));
     }
 }

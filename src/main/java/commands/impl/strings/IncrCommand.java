@@ -29,20 +29,17 @@ public class IncrCommand extends WriteCommand {
     protected CommandResult executeCommand(CommandArgs args, StorageService storage) {
         String key = args.key();
         try {
-            long newValue = storage.incrementString(key); // now returns long
+            long newValue = storage.incrementString(key);
             publishDataAdded(key);
+
+            // Propagate to replicas
+            propagateCommand(args.rawArgs());
+
             return new CommandResult.Success(ResponseBuilder.integer(newValue));
-        } catch (IllegalStateException e) {
-            // WRONG TYPE
-            return new CommandResult.Error(e.getMessage());
-        } catch (NumberFormatException e) {
-            // NOT AN INTEGER or overflow
+        } catch (IllegalStateException | NumberFormatException e) {
             return new CommandResult.Error(e.getMessage());
         } catch (Exception e) {
-            // catch-all to avoid leaking stack traces as strange RESP replies
             return new CommandResult.Error(e.getMessage());
         }
     }
-
-
 }

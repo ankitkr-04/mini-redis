@@ -30,7 +30,12 @@ public final class PushCommand extends WriteCommand {
         String[] values = args.values();
         boolean isLeft = "LPUSH".equalsIgnoreCase(args.operation());
         int newSize = isLeft ? storage.leftPush(key, values) : storage.rightPush(key, values);
+
         publishDataAdded(key);
+
+        // Propagate to replicas
+        propagateCommand(args.rawArgs());
+
         return new CommandResult.Success(ResponseBuilder.integer(newSize));
     }
 }

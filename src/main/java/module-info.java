@@ -1,4 +1,6 @@
 module redis {
+    requires org.slf4j;
+
     exports blocking;
     exports collections;
     exports commands;
@@ -13,6 +15,7 @@ module redis {
     exports events;
     exports errors;
     exports protocol;
+    exports protocol.parser;
     exports server;
     exports server.handler;
     exports server.replication;

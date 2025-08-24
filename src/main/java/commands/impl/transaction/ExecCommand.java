@@ -2,10 +2,11 @@ package commands.impl.transaction;
 
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
+
 import commands.CommandArgs;
 import commands.CommandResult;
 import commands.base.WriteCommand;
-import config.RedisConstants;
+import config.ProtocolConstants;
 import errors.ErrorCode;
 import events.StorageEventPublisher;
 import protocol.ResponseBuilder;
@@ -40,7 +41,7 @@ public final class ExecCommand extends WriteCommand {
         var queuedCommands = state.getQueuedCommands();
         state.clearTransaction();
         if (queuedCommands.isEmpty())
-            return new CommandResult.Success(ResponseBuilder.encode(RedisConstants.EMPTY_ARRAY));
+            return new CommandResult.Success(ResponseBuilder.encode(ProtocolConstants.RESP_EMPTY_ARRAY));
         var results = new ArrayList<ByteBuffer>();
         for (var queued : queuedCommands) {
             CommandResult result = queued.command().execute(queued.args(), storage);

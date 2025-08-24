@@ -3,6 +3,7 @@ package commands.impl.streams;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+
 import commands.CommandArgs;
 import storage.StorageService;
 
@@ -57,7 +58,8 @@ public record XReadArgs(
     }
 
     /**
-     * Return a new XReadArgs where any "$" id is replaced by the current last stream ID
+     * Return a new XReadArgs where any "$" id is replaced by the current last
+     * stream ID
      * for that key (or "0-0" if the stream doesn't yet exist).
      */
     public XReadArgs withResolvedIds(StorageService storage) {

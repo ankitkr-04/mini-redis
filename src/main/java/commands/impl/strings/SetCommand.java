@@ -3,7 +3,7 @@ package commands.impl.strings;
 import commands.CommandArgs;
 import commands.CommandResult;
 import commands.base.WriteCommand;
-import config.RedisConstants;
+import config.ProtocolConstants;
 import errors.ErrorCode;
 import errors.ServerError;
 import events.StorageEventPublisher;
@@ -30,8 +30,7 @@ public final class SetCommand extends WriteCommand {
         } else if (args.argCount() == 5) {
             if (!"PX".equalsIgnoreCase(args.arg(3))) {
                 return ValidationResult.invalid(
-                        ServerError.validation(
-                                ErrorCode.WRONG_ARG_COUNT.getMessage()));
+                        ServerError.validation(ErrorCode.WRONG_ARG_COUNT.getMessage()));
             }
             return ValidationUtils.validateInteger(args.arg(4));
         }
@@ -50,7 +49,9 @@ public final class SetCommand extends WriteCommand {
         storage.setString(key, value, expiry);
         publishDataAdded(key);
 
-        return new CommandResult.Success(
-                ResponseBuilder.encode(RedisConstants.OK_RESPONSE));
+        // Propagate to replicas
+        propagateCommand(args.rawArgs());
+
+        return new CommandResult.Success(ResponseBuilder.encode(ProtocolConstants.RESP_OK));
     }
 }

@@ -1,4 +1,4 @@
-package config;
+package protocol.parser;
 
 import java.util.HashMap;
 import java.util.Map;

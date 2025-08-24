@@ -1,6 +1,7 @@
 package validation;
 
 import java.util.Optional;
+
 import errors.ServerError;
 
 public sealed interface ValidationResult permits ValidationResult.Valid, ValidationResult.Invalid {
@@ -38,5 +39,9 @@ public sealed interface ValidationResult permits ValidationResult.Valid, Validat
 
     static ValidationResult invalid(ServerError error) {
         return new Invalid(error);
+    }
+
+    static ValidationResult invalid(String message) {
+        return new Invalid(ServerError.validation(message));
     }
 }

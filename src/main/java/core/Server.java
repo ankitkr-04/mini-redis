@@ -6,7 +6,8 @@ import java.nio.channels.SelectionKey;
 import java.nio.channels.Selector;
 import java.nio.channels.ServerSocketChannel;
 import java.util.Iterator;
-import config.CommandLineParser;
+
+import protocol.parser.CommandLineParser;
 import server.ServerOptions;
 import server.handler.ClientHandler;
 import server.replication.ReplicationClient; // Add import

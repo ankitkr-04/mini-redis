@@ -4,10 +4,11 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.locks.StampedLock;
-import config.RedisConstants;
+
+import config.ProtocolConstants;
 
 public final class QuickList<T> {
-    private static final int NODE_CAPACITY = RedisConstants.LIST_NODE_CAPACITY;
+    private static final int NODE_CAPACITY = ProtocolConstants.LIST_NODE_CAPACITY;
 
     private static final class Node<T> {
         @SuppressWarnings("unchecked")

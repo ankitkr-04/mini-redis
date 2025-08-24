@@ -2,8 +2,9 @@ package server;
 
 import java.util.Map;
 import java.util.Optional;
-import config.CommandLineParser;
+
 import config.ServerConfig;
+import protocol.parser.CommandLineParser;
 
 public record ServerOptions(
                 int port,

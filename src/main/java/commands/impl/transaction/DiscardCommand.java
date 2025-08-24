@@ -3,7 +3,7 @@ package commands.impl.transaction;
 import commands.CommandArgs;
 import commands.CommandResult;
 import commands.base.WriteCommand;
-import config.RedisConstants;
+import config.ProtocolConstants;
 import errors.ErrorCode;
 import events.StorageEventPublisher;
 import protocol.ResponseBuilder;
@@ -39,7 +39,7 @@ public final class DiscardCommand extends WriteCommand {
         }
 
         state.clearTransaction();
-        return new CommandResult.Success(ResponseBuilder.encode(RedisConstants.OK_RESPONSE));
+        return new CommandResult.Success(ResponseBuilder.encode(ProtocolConstants.RESP_OK));
     }
 
 }
