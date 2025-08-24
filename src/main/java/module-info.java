@@ -9,10 +9,13 @@ module redis {
     exports commands.impl.streams;
     exports commands.impl.strings;
     exports commands.impl.transaction;
+    exports core;
     exports events;
     exports errors;
-    exports server.handler;
     exports protocol;
+    exports server;
+    exports server.handler;
+    exports server.info;
     exports storage;
     exports storage.expiry;
     exports storage.repositories;

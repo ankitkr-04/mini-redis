@@ -26,7 +26,7 @@ public final class TransactionState {
     }
 
     public List<QueuedCommand> getQueuedCommands() {
-        return List.copyOf(queuedCommands); // Java 10+ immutable copy
+        return List.copyOf(queuedCommands);
     }
 
     public boolean isInTransaction() {

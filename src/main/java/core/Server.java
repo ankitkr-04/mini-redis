@@ -7,23 +7,26 @@ import java.nio.channels.Selector;
 import java.nio.channels.ServerSocketChannel;
 import java.util.Iterator;
 import config.CommandLineParser;
-import config.ServerConfig;
+import server.ServerOptions;
 import server.handler.ClientHandler;
 
 public final class Server {
     private final int port;
     private final ServerContext context;
 
-    public Server(int port) {
-        this.port = port;
-        this.context = new ServerContext();
+    public Server(ServerOptions options) {
+        this.port = options.port();
+        this.context = new ServerContext(options);
     }
 
     public static void main(String[] args) {
-        // port argument can be passed, --port 6380
-        var options = CommandLineParser.parse(args);
-        int port = CommandLineParser.getIntOption(options, "port", ServerConfig.DEFAULT_PORT);
-        new Server(port).start();
+        var parseResult = CommandLineParser.parse(args);
+        if (!parseResult.getErrors().isEmpty()) {
+            parseResult.getErrors().forEach((key, error) -> System.err.println(error));
+            System.exit(1);
+        }
+        var serverOptions = ServerOptions.from(parseResult.getOptions());
+        new Server(serverOptions).start();
     }
 
     public void start() {

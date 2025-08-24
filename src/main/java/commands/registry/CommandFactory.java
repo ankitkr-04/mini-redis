@@ -1,7 +1,7 @@
 package commands.registry;
 
-import blocking.BlockingManager;
 import commands.impl.basic.EchoCommand;
+import commands.impl.basic.InfoCommand;
 import commands.impl.basic.PingCommand;
 import commands.impl.basic.TypeCommand;
 import commands.impl.lists.BlockingPopCommand;
@@ -18,41 +18,41 @@ import commands.impl.strings.SetCommand;
 import commands.impl.transaction.DiscardCommand;
 import commands.impl.transaction.ExecCommand;
 import commands.impl.transaction.MultiCommand;
-import events.StorageEventPublisher;
-import transaction.TransactionManager;
+import core.ServerContext;
 
 public final class CommandFactory {
 
-    public static CommandRegistry createDefault(StorageEventPublisher eventPublisher,
-            BlockingManager blockingManager, TransactionManager transactionManager) {
-        CommandRegistry registry = new CommandRegistry();
+    public static CommandRegistry createDefault(ServerContext context) {
+
+        var registry = new CommandRegistry();
 
         // Basic commands
         registry.register(new PingCommand());
         registry.register(new EchoCommand());
         registry.register(new TypeCommand());
+        registry.register(new InfoCommand(context.getServerInfo()));
 
         // String commands
         registry.register(new GetCommand());
-        registry.register(new SetCommand(eventPublisher));
-        registry.register(new IncrCommand(eventPublisher));
+        registry.register(new SetCommand(context));
+        registry.register(new IncrCommand(context));
 
-        // List commands - simplified registration
-        registry.register(new PushCommand(eventPublisher), "LPUSH", "RPUSH");
+        // List commands
+        registry.register(new PushCommand(context), "LPUSH", "RPUSH");
         registry.register(new PopCommand(), "LPOP", "RPOP");
         registry.register(new RangeCommand());
         registry.register(new LengthCommand());
-        registry.register(new BlockingPopCommand(blockingManager));
+        registry.register(new BlockingPopCommand(context.getBlockingManager()));
 
         // Stream commands
-        registry.register(new AddStreamCommand(eventPublisher));
+        registry.register(new AddStreamCommand(context));
         registry.register(new RangeStreamCommand());
-        registry.register(new ReadStreamCommand(blockingManager));
+        registry.register(new ReadStreamCommand(context.getBlockingManager()));
 
         // Transaction commands
-        registry.register(new MultiCommand(transactionManager, eventPublisher));
-        registry.register(new ExecCommand(transactionManager, eventPublisher));
-        registry.register(new DiscardCommand(transactionManager, eventPublisher));
+        registry.register(new MultiCommand(context.getTransactionManager(), context));
+        registry.register(new ExecCommand(context.getTransactionManager(), context));
+        registry.register(new DiscardCommand(context.getTransactionManager(), context));
 
         return registry;
     }
