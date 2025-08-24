@@ -1,31 +1,18 @@
 package commands.base;
 
-import core.ServerContext;
-import events.StorageEventPublisher;
+import server.ServerContext;
 
-public abstract class WriteCommand extends BaseCommand {
-    protected final StorageEventPublisher eventPublisher;
-    protected final ServerContext context;
-
-    protected WriteCommand(StorageEventPublisher eventPublisher) {
-        this.eventPublisher = eventPublisher;
-        this.context = (ServerContext) eventPublisher;
-    }
-
+public abstract class WriteCommand extends AbstractCommand {
     @Override
-    public final boolean requiresClient() {
-        return false;
+    public final boolean isWriteCommand() {
+        return true;
     }
 
-    protected void publishDataAdded(String key) {
-        if (eventPublisher != null) {
-            eventPublisher.publishDataAdded(key);
-        }
+    protected void publishDataAdded(String key, ServerContext context) {
+        context.publishDataAdded(key);
     }
 
-    protected void propagateCommand(String[] commandArgs) {
-        if (context != null) {
-            context.propagateWriteCommand(commandArgs);
-        }
+    protected void propagateCommand(String[] commandArgs, ServerContext context) {
+        context.propagateWriteCommand(commandArgs);
     }
 }

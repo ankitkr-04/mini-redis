@@ -5,53 +5,45 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
-import blocking.BlockingManager;
-import commands.CommandArgs;
-import commands.CommandResult;
 import commands.base.BlockingCommand;
+import commands.context.CommandContext;
+import commands.result.CommandResult;
+import commands.validation.ValidationResult;
 import config.ProtocolConstants;
-import errors.ServerError;
 import protocol.ResponseBuilder;
 import storage.StorageService;
-import validation.ValidationResult;
 
 public final class ReadStreamCommand extends BlockingCommand {
-    private final BlockingManager blockingManager;
-
-    public ReadStreamCommand(BlockingManager blockingManager) {
-        this.blockingManager = blockingManager;
-    }
-
     @Override
-    public String name() {
+    public String getName() {
         return "XREAD";
     }
 
     @Override
-    protected ValidationResult validateCommand(CommandArgs args) {
+    protected ValidationResult performValidation(CommandContext context) {
         try {
-            XReadArgs.parse(args);
+            XReadArgs.parse(context);
             return ValidationResult.valid();
         } catch (IllegalArgumentException e) {
-            return ValidationResult.invalid(ServerError.validation(e.getMessage()));
+            return ValidationResult.invalid(e.getMessage());
         }
     }
 
     @Override
-    protected CommandResult executeCommand(CommandArgs args, StorageService storage) {
+    protected CommandResult executeInternal(CommandContext context) {
         XReadArgs parsed;
         try {
-            parsed = XReadArgs.parse(args);
+            parsed = XReadArgs.parse(context);
         } catch (IllegalArgumentException e) {
-            return new CommandResult.Error(e.getMessage());
+            return CommandResult.error(e.getMessage());
         }
 
-        XReadArgs resolvedArgs = parsed.withResolvedIds(storage);
+        XReadArgs resolvedArgs = parsed.withResolvedIds(context.getStorageService());
 
-        List<ByteBuffer> streamResponses = buildStreamResponses(resolvedArgs, storage);
+        List<ByteBuffer> streamResponses = buildStreamResponses(resolvedArgs, context.getStorageService());
 
         if (!streamResponses.isEmpty() || parsed.blockMs().isEmpty()) {
-            return new CommandResult.Success(
+            return CommandResult.success(
                     streamResponses.isEmpty()
                             ? ResponseBuilder.encode(ProtocolConstants.RESP_EMPTY_ARRAY)
                             : ResponseBuilder.arrayOfBuffers(streamResponses));
@@ -59,14 +51,14 @@ public final class ReadStreamCommand extends BlockingCommand {
 
         var timeoutForBlocking = parsed.blockMs().flatMap(ms -> ms > 0 ? Optional.of(ms) : Optional.empty());
 
-        blockingManager.blockClientForStreams(
+        context.getServerContext().getBlockingManager().blockClientForStreams(
                 resolvedArgs.keys(),
                 resolvedArgs.ids(),
                 parsed.count(),
-                args.clientChannel(),
+                context.getClientChannel(),
                 timeoutForBlocking);
 
-        return new CommandResult.Async();
+        return CommandResult.async();
     }
 
     private List<ByteBuffer> buildStreamResponses(XReadArgs parsed, StorageService storage) {

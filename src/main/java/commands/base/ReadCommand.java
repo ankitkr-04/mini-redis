@@ -1,8 +1,8 @@
 package commands.base;
 
-public abstract class ReadCommand extends BaseCommand {
+public abstract class ReadCommand extends AbstractCommand {
     @Override
-    public final boolean requiresClient() {
+    public final boolean isWriteCommand() {
         return false;
     }
 }

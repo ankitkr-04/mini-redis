@@ -1,28 +1,26 @@
 package commands.impl.basic;
 
-import commands.CommandArgs;
-import commands.CommandResult;
 import commands.base.ReadCommand;
+import commands.context.CommandContext;
+import commands.result.CommandResult;
+import commands.validation.CommandValidator;
+import commands.validation.ValidationResult;
 import config.ProtocolConstants;
 import protocol.ResponseBuilder;
-import storage.StorageService;
-import validation.ValidationResult;
-import validation.ValidationUtils;
 
 public final class PingCommand extends ReadCommand {
     @Override
-    public String name() {
+    public String getName() {
         return "PING";
     }
 
     @Override
-    protected ValidationResult validateCommand(CommandArgs args) {
-        return ValidationUtils.validateArgCount(args, 1);
+    protected ValidationResult performValidation(CommandContext context) {
+        return CommandValidator.validateArgCount(context, 1);
     }
 
     @Override
-    protected CommandResult executeCommand(CommandArgs args, StorageService storage) {
-        return new CommandResult.Success(
-                ResponseBuilder.encode(ProtocolConstants.RESP_PONG));
+    protected CommandResult executeInternal(CommandContext context) {
+        return CommandResult.success(ResponseBuilder.encode(ProtocolConstants.RESP_PONG));
     }
 }

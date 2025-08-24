@@ -1,39 +1,38 @@
 package commands.impl.lists;
 
-import commands.CommandArgs;
-import commands.CommandResult;
 import commands.base.ReadCommand;
+import commands.context.CommandContext;
+import commands.result.CommandResult;
+import commands.validation.CommandValidator;
+import commands.validation.ValidationResult;
 import protocol.ResponseBuilder;
-import storage.StorageService;
-import validation.ValidationResult;
-import validation.ValidationUtils;
 
 public final class RangeCommand extends ReadCommand {
     @Override
-    public String name() {
+    public String getName() {
         return "LRANGE";
     }
 
     @Override
-    protected ValidationResult validateCommand(CommandArgs args) {
-        var result = ValidationUtils.validateArgCount(args, 4);
+    protected ValidationResult performValidation(CommandContext context) {
+        ValidationResult result = CommandValidator.validateArgCount(context, 4);
         if (!result.isValid())
             return result;
 
-        result = ValidationUtils.validateInteger(args.arg(2));
+        result = CommandValidator.validateInteger(context.getArg(2));
         if (!result.isValid())
             return result;
 
-        return ValidationUtils.validateInteger(args.arg(3));
+        return CommandValidator.validateInteger(context.getArg(3));
     }
 
     @Override
-    protected CommandResult executeCommand(CommandArgs args, StorageService storage) {
-        String key = args.key();
-        int start = Integer.parseInt(args.arg(2));
-        int end = Integer.parseInt(args.arg(3));
+    protected CommandResult executeInternal(CommandContext context) {
+        String key = context.getKey();
+        int start = context.getIntArg(2);
+        int end = context.getIntArg(3);
 
-        var values = storage.getListRange(key, start, end);
-        return new CommandResult.Success(ResponseBuilder.array(values));
+        var values = context.getStorageService().getListRange(key, start, end);
+        return CommandResult.success(ResponseBuilder.array(values));
     }
 }

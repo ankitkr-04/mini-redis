@@ -1,43 +1,39 @@
 package commands.impl.streams;
 
-import commands.CommandArgs;
-import commands.CommandResult;
 import commands.base.ReadCommand;
+import commands.context.CommandContext;
+import commands.result.CommandResult;
+import commands.validation.CommandValidator;
+import commands.validation.ValidationResult;
 import errors.ErrorCode;
-import errors.ServerError;
 import protocol.ResponseBuilder;
-import storage.StorageService;
-import validation.ValidationResult;
-import validation.ValidationUtils;
 
 public final class RangeStreamCommand extends ReadCommand {
-
     @Override
-    public String name() {
+    public String getName() {
         return "XRANGE";
     }
 
     @Override
-    protected ValidationResult validateCommand(CommandArgs args) {
-        if (args.argCount() != 4 && args.argCount() != 6) {
-            return ValidationResult.invalid(ServerError.validation(
-                    ErrorCode.WRONG_ARG_COUNT.getMessage()));
+    protected ValidationResult performValidation(CommandContext context) {
+        if (context.getArgCount() != 4 && context.getArgCount() != 6) {
+            return ValidationResult.invalid(ErrorCode.WRONG_ARG_COUNT.getMessage());
         }
-        if (args.argCount() == 6) {
-            if (!"COUNT".equalsIgnoreCase(args.arg(4))) {
-                return ValidationResult.invalid(ServerError.validation(
-                        ErrorCode.WRONG_ARG_COUNT.getMessage()));
+        if (context.getArgCount() == 6) {
+            if (!"COUNT".equalsIgnoreCase(context.getArg(4))) {
+                return ValidationResult.invalid(ErrorCode.WRONG_ARG_COUNT.getMessage());
             }
-            return ValidationUtils.validateInteger(args.arg(5));
+            return CommandValidator.validateInteger(context.getArg(5));
         }
         return ValidationResult.valid();
     }
 
     @Override
-    protected CommandResult executeCommand(CommandArgs args, StorageService storage) {
-        int count = args.argCount() == 4 ? 0 : Integer.parseInt(args.arg(5));
-        var res = storage.getStreamRange(args.key(), args.arg(2), args.arg(3), count);
-        return new CommandResult.Success(
+    protected CommandResult executeInternal(CommandContext context) {
+        int count = context.getArgCount() == 4 ? 0 : context.getIntArg(5);
+        var res = context.getStorageService().getStreamRange(context.getKey(), context.getArg(2), context.getArg(3),
+                count);
+        return CommandResult.success(
                 ResponseBuilder.streamEntries(res, e -> e.id(), e -> e.fieldList()));
     }
 }

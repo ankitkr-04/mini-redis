@@ -1,41 +1,36 @@
 package commands.impl.lists;
 
-import commands.CommandArgs;
-import commands.CommandResult;
 import commands.base.WriteCommand;
-import events.StorageEventPublisher;
+import commands.context.CommandContext;
+import commands.result.CommandResult;
+import commands.validation.CommandValidator;
+import commands.validation.ValidationResult;
 import protocol.ResponseBuilder;
-import storage.StorageService;
-import validation.ValidationResult;
-import validation.ValidationUtils;
 
 public final class PushCommand extends WriteCommand {
-    public PushCommand(StorageEventPublisher eventPublisher) {
-        super(eventPublisher);
+    @Override
+    public String getName() {
+        return "PUSH"; // Will handle LPUSH/RPUSH
     }
 
     @Override
-    public String name() {
-        return "PUSH"; // LPUSH/RPUSH
+    protected ValidationResult performValidation(CommandContext context) {
+        return CommandValidator.validateMinArgs(context, 3);
     }
 
     @Override
-    protected ValidationResult validateCommand(CommandArgs args) {
-        return ValidationUtils.validateArgRange(args, 3, Integer.MAX_VALUE);
-    }
+    protected CommandResult executeInternal(CommandContext context) {
+        String key = context.getKey();
+        String[] values = context.getValues();
+        boolean isLeft = "LPUSH".equalsIgnoreCase(context.getOperation());
 
-    @Override
-    protected CommandResult executeCommand(CommandArgs args, StorageService storage) {
-        String key = args.key();
-        String[] values = args.values();
-        boolean isLeft = "LPUSH".equalsIgnoreCase(args.operation());
-        int newSize = isLeft ? storage.leftPush(key, values) : storage.rightPush(key, values);
+        int newSize = isLeft
+                ? context.getStorageService().leftPush(key, values)
+                : context.getStorageService().rightPush(key, values);
 
-        publishDataAdded(key);
+        publishDataAdded(key, context.getServerContext());
+        propagateCommand(context.getArgs(), context.getServerContext());
 
-        // Propagate to replicas
-        propagateCommand(args.rawArgs());
-
-        return new CommandResult.Success(ResponseBuilder.integer(newSize));
+        return CommandResult.success(ResponseBuilder.integer(newSize));
     }
 }

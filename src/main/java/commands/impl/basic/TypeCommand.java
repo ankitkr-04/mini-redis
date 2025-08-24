@@ -1,27 +1,26 @@
 package commands.impl.basic;
 
-import commands.CommandArgs;
-import commands.CommandResult;
 import commands.base.ReadCommand;
+import commands.context.CommandContext;
+import commands.result.CommandResult;
+import commands.validation.CommandValidator;
+import commands.validation.ValidationResult;
 import protocol.ResponseBuilder;
-import storage.StorageService;
-import validation.ValidationResult;
-import validation.ValidationUtils;
 
 public final class TypeCommand extends ReadCommand {
     @Override
-    public String name() {
+    public String getName() {
         return "TYPE";
     }
 
     @Override
-    protected ValidationResult validateCommand(CommandArgs args) {
-        return ValidationUtils.validateArgCount(args, 2);
+    protected ValidationResult performValidation(CommandContext context) {
+        return CommandValidator.validateArgCount(context, 2);
     }
 
     @Override
-    protected CommandResult executeCommand(CommandArgs args, StorageService storage) {
-        var type = storage.getType(args.key());
-        return new CommandResult.Success(ResponseBuilder.simpleString(type.getDisplayName()));
+    protected CommandResult executeInternal(CommandContext context) {
+        var type = context.getStorageService().getType(context.getKey());
+        return CommandResult.success(ResponseBuilder.simpleString(type.getDisplayName()));
     }
 }

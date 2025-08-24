@@ -3,48 +3,39 @@ package commands.impl.transaction;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 
-import commands.CommandArgs;
-import commands.CommandResult;
 import commands.base.WriteCommand;
+import commands.context.CommandContext;
+import commands.result.CommandResult;
+import commands.validation.CommandValidator;
+import commands.validation.ValidationResult;
 import config.ProtocolConstants;
 import errors.ErrorCode;
-import events.StorageEventPublisher;
 import protocol.ResponseBuilder;
-import storage.StorageService;
-import transaction.TransactionManager;
-import validation.ValidationResult;
-import validation.ValidationUtils;
 
 public final class ExecCommand extends WriteCommand {
-    private final TransactionManager transactionManager;
-
-    public ExecCommand(TransactionManager manager, StorageEventPublisher eventPublisher) {
-        super(eventPublisher);
-        this.transactionManager = manager;
-    }
-
     @Override
-    public String name() {
+    public String getName() {
         return "EXEC";
     }
 
     @Override
-    protected ValidationResult validateCommand(CommandArgs args) {
-        return ValidationUtils.validateArgCount(args, 1);
+    protected ValidationResult performValidation(CommandContext context) {
+        return CommandValidator.validateArgCount(context, 1);
     }
 
     @Override
-    protected CommandResult executeCommand(CommandArgs args, StorageService storage) {
-        var state = transactionManager.getOrCreateState(args.clientChannel());
+    protected CommandResult executeInternal(CommandContext context) {
+        var state = context.getServerContext().getTransactionManager().getOrCreateState(context.getClientChannel());
         if (!state.isInTransaction())
-            return new CommandResult.Error(ErrorCode.EXEC_WITHOUT_MULTI.getMessage());
+            return CommandResult.error(ErrorCode.EXEC_WITHOUT_MULTI.getMessage());
         var queuedCommands = state.getQueuedCommands();
         state.clearTransaction();
         if (queuedCommands.isEmpty())
-            return new CommandResult.Success(ResponseBuilder.encode(ProtocolConstants.RESP_EMPTY_ARRAY));
+            return CommandResult.success(ResponseBuilder.encode(ProtocolConstants.RESP_EMPTY_ARRAY));
         var results = new ArrayList<ByteBuffer>();
         for (var queued : queuedCommands) {
-            CommandResult result = queued.command().execute(queued.args(), storage);
+            CommandResult result = queued.command().execute(new CommandContext(queued.operation(), queued.rawArgs(),
+                    context.getClientChannel(), context.getStorageService(), context.getServerContext()));
             results.add(switch (result) {
                 case CommandResult.Success s -> s.response();
                 case CommandResult.Error e -> ResponseBuilder.error(e.message());
@@ -52,6 +43,6 @@ public final class ExecCommand extends WriteCommand {
                         .error(ErrorCode.BLOCKING_IN_TRANSACTION.getMessage());
             });
         }
-        return new CommandResult.Success(ResponseBuilder.arrayOfBuffers(results));
+        return CommandResult.success(ResponseBuilder.arrayOfBuffers(results));
     }
 }

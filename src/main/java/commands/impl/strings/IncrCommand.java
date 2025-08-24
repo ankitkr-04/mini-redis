@@ -1,45 +1,34 @@
 package commands.impl.strings;
 
-import commands.CommandArgs;
-import commands.CommandResult;
 import commands.base.WriteCommand;
-import events.StorageEventPublisher;
+import commands.context.CommandContext;
+import commands.result.CommandResult;
+import commands.validation.CommandValidator;
+import commands.validation.ValidationResult;
 import protocol.ResponseBuilder;
-import storage.StorageService;
-import validation.ValidationResult;
-import validation.ValidationUtils;
 
-public class IncrCommand extends WriteCommand {
-
-    public IncrCommand(StorageEventPublisher eventPublisher) {
-        super(eventPublisher);
-    }
-
+public final class IncrCommand extends WriteCommand {
     @Override
-    public String name() {
+    public String getName() {
         return "INCR";
     }
 
     @Override
-    protected ValidationResult validateCommand(CommandArgs args) {
-        return ValidationUtils.validateArgCount(args, 2);
+    protected ValidationResult performValidation(CommandContext context) {
+        return CommandValidator.validateArgCount(context, 2);
     }
 
     @Override
-    protected CommandResult executeCommand(CommandArgs args, StorageService storage) {
-        String key = args.key();
+    protected CommandResult executeInternal(CommandContext context) {
+        String key = context.getKey();
         try {
-            long newValue = storage.incrementString(key);
-            publishDataAdded(key);
+            long newValue = context.getStorageService().incrementString(key);
+            publishDataAdded(key, context.getServerContext());
+            propagateCommand(context.getArgs(), context.getServerContext());
 
-            // Propagate to replicas
-            propagateCommand(args.rawArgs());
-
-            return new CommandResult.Success(ResponseBuilder.integer(newValue));
+            return CommandResult.success(ResponseBuilder.integer(newValue));
         } catch (IllegalStateException | NumberFormatException e) {
-            return new CommandResult.Error(e.getMessage());
-        } catch (Exception e) {
-            return new CommandResult.Error(e.getMessage());
+            return CommandResult.error(e.getMessage());
         }
     }
 }

@@ -1,7 +1,6 @@
 package events;
 
-public interface StorageEventPublisher {
+public interface EventPublisher {
     void publishDataAdded(String key);
-
     void publishDataRemoved(String key);
 }

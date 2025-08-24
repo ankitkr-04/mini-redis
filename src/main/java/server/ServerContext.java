@@ -1,4 +1,4 @@
-package core;
+package server;
 
 import java.io.IOException;
 import java.nio.channels.Selector;
@@ -10,50 +10,57 @@ import blocking.BlockingManager;
 import blocking.TimeoutScheduler;
 import commands.registry.CommandFactory;
 import commands.registry.CommandRegistry;
-import events.StorageEventPublisher;
+import events.EventPublisher;
 import protocol.CommandDispatcher;
-import server.ServerInfo;
-import server.ServerOptions;
-import server.replication.ReplicationClient;
-import server.replication.ReplicationManager;
+import replication.ReplicationClient;
+import replication.ReplicationManager;
+import replication.ReplicationState;
 import storage.StorageService;
 import transaction.TransactionManager;
 
-public final class ServerContext implements StorageEventPublisher {
+public final class ServerContext implements EventPublisher {
     private static final Logger log = LoggerFactory.getLogger(ServerContext.class);
 
-    private final int port;
+    private final ServerConfiguration config;
     private final StorageService storageService;
     private final BlockingManager blockingManager;
     private final CommandRegistry commandRegistry;
     private final CommandDispatcher commandDispatcher;
     private final TimeoutScheduler timeoutScheduler;
     private final TransactionManager transactionManager;
-    private final ServerInfo serverInfo;
+    private final ReplicationState replicationState;
     private final ReplicationClient replicationClient;
     private final ReplicationManager replicationManager;
 
-    public ServerContext(ServerOptions options) {
-        this.port = options.port();
+    public ServerContext(ServerConfiguration config) {
+        this.config = config;
         this.storageService = new StorageService();
         this.blockingManager = new BlockingManager(storageService);
         this.transactionManager = new TransactionManager();
-        this.serverInfo = new ServerInfo(options);
-        this.replicationManager = new ReplicationManager(serverInfo.getReplicationInfo());
-        this.commandRegistry = CommandFactory.createDefault(this);
-        this.commandDispatcher = new CommandDispatcher(commandRegistry, storageService,
-                transactionManager, this);
+
+        // Initialize replication
+        this.replicationState = new ReplicationState(
+                config.isReplicaMode(),
+                config.isReplicaMode() ? config.getMasterInfo().host() : null,
+                config.isReplicaMode() ? config.getMasterInfo().port() : 0,
+                config.replicationBacklogSize());
+
+        this.replicationManager = new ReplicationManager(replicationState);
+        this.commandRegistry = CommandFactory.createRegistry(this);
+        this.commandDispatcher = new CommandDispatcher(commandRegistry, storageService, transactionManager, this);
         this.timeoutScheduler = new TimeoutScheduler(blockingManager);
-        this.replicationClient = options.masterInfo()
-                .map(info -> new ReplicationClient(info, serverInfo.getReplicationInfo(), port))
-                .orElse(null);
+
+        this.replicationClient = config.isReplicaMode()
+                ? new ReplicationClient(config.getMasterInfo(), replicationState, config.port(), this)
+                : null;
 
         log.info("ServerContext initialized - Port: {}, Role: {}",
-                port, serverInfo.getReplicationInfo().getRole());
+                config.port(), replicationState.getRole());
     }
 
     public void start(Selector selector) {
         timeoutScheduler.start();
+
         if (replicationClient != null) {
             try {
                 replicationClient.register(selector);
@@ -66,25 +73,26 @@ public final class ServerContext implements StorageEventPublisher {
 
     public void shutdown() {
         log.info("Shutting down server context");
+
         timeoutScheduler.shutdown();
         if (replicationClient != null) {
             replicationClient.shutdown();
         }
         blockingManager.clear();
         storageService.clear();
+
         log.info("Server context shutdown complete");
     }
 
-    // Command propagation for write operations
     public void propagateWriteCommand(String[] commandArgs) {
-        if (serverInfo.getReplicationInfo().getConnectedSlaves() > 0) {
+        if (replicationState.getConnectedSlaves() > 0) {
             replicationManager.propagateCommand(commandArgs);
         }
     }
 
     // Getters
-    public int getPort() {
-        return port;
+    public ServerConfiguration getConfig() {
+        return config;
     }
 
     public StorageService getStorageService() {
@@ -107,8 +115,8 @@ public final class ServerContext implements StorageEventPublisher {
         return commandDispatcher;
     }
 
-    public ServerInfo getServerInfo() {
-        return serverInfo;
+    public ReplicationState getReplicationState() {
+        return replicationState;
     }
 
     public ReplicationClient getReplicationClient() {
@@ -119,7 +127,7 @@ public final class ServerContext implements StorageEventPublisher {
         return replicationManager;
     }
 
-    // StorageEventPublisher implementation
+    // EventPublisher implementation
     @Override
     public void publishDataAdded(String key) {
         blockingManager.onDataAdded(key);

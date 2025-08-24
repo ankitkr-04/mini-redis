@@ -2,15 +2,16 @@ package transaction;
 
 import java.util.ArrayList;
 import java.util.List;
-import commands.Command;
-import commands.CommandArgs;
+
+import commands.context.CommandContext;
+import commands.core.Command;
 import errors.ErrorCode;
 
 public final class TransactionState {
     private boolean inTransaction = false;
     private final List<QueuedCommand> queuedCommands = new ArrayList<>();
 
-    public record QueuedCommand(Command command, CommandArgs args) {
+    public record QueuedCommand(Command command, String operation, String[] rawArgs) {
     }
 
     public void beginTransaction() {
@@ -18,11 +19,11 @@ public final class TransactionState {
         this.queuedCommands.clear();
     }
 
-    public void queueCommand(Command command, CommandArgs args) {
+    public void queueCommand(Command command, CommandContext context) {
         if (!inTransaction) {
             throw new IllegalStateException(ErrorCode.NOT_IN_TRANSACTION.getMessage());
         }
-        this.queuedCommands.add(new QueuedCommand(command, args));
+        this.queuedCommands.add(new QueuedCommand(command, context.getOperation(), context.getArgs()));
     }
 
     public List<QueuedCommand> getQueuedCommands() {

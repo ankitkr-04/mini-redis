@@ -1,24 +1,32 @@
-package commands;
+package commands.result;
 
 import java.nio.ByteBuffer;
 
 public sealed interface CommandResult
         permits CommandResult.Success, CommandResult.Error, CommandResult.Async {
 
-    public static CommandResult success(ByteBuffer response) {
+    static CommandResult success(ByteBuffer response) {
         return new Success(response);
     }
 
-    public static CommandResult error(String message) {
+    static CommandResult error(String message) {
         return new Error(message);
     }
 
-    public static CommandResult async() {
+    static CommandResult async() {
         return new Async();
     }
 
-    public default boolean isSuccess() {
+    default boolean isSuccess() {
         return this instanceof Success;
+    }
+
+    default boolean isError() {
+        return this instanceof Error;
+    }
+
+    default boolean isAsync() {
+        return this instanceof Async;
     }
 
     record Success(ByteBuffer response) implements CommandResult {
@@ -28,5 +36,5 @@ public sealed interface CommandResult
     }
 
     record Async() implements CommandResult {
-    } // For blocking commands
+    }
 }

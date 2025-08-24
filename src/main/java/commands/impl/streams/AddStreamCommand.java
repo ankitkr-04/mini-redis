@@ -2,58 +2,48 @@ package commands.impl.streams;
 
 import java.util.Map;
 
-import commands.CommandArgs;
-import commands.CommandResult;
 import commands.base.WriteCommand;
+import commands.context.CommandContext;
+import commands.result.CommandResult;
+import commands.validation.CommandValidator;
+import commands.validation.ValidationResult;
 import errors.ErrorCode;
-import errors.ServerError;
-import events.StorageEventPublisher;
 import protocol.ResponseBuilder;
-import storage.StorageService;
 import storage.expiry.ExpiryPolicy;
-import validation.ValidationResult;
-import validation.ValidationUtils;
 
-public class AddStreamCommand extends WriteCommand {
-
-    public AddStreamCommand(StorageEventPublisher eventPublisher) {
-        super(eventPublisher);
-    }
-
+public final class AddStreamCommand extends WriteCommand {
     @Override
-    public String name() {
+    public String getName() {
         return "XADD";
     }
 
     @Override
-    protected ValidationResult validateCommand(CommandArgs args) {
-        var res = ValidationUtils.validateArgRange(args, 4, Integer.MAX_VALUE);
+    protected ValidationResult performValidation(CommandContext context) {
+        ValidationResult res = CommandValidator.validateMinArgs(context, 4);
         if (!res.isValid())
             return res;
 
-        if ((args.argCount() - 3) % 2 != 0) {
-            return ValidationResult.invalid(ServerError.validation(ErrorCode.WRONG_ARG_COUNT.getMessage()));
+        if ((context.getArgCount() - 3) % 2 != 0) {
+            return ValidationResult.invalid(ErrorCode.WRONG_ARG_COUNT.getMessage());
         }
 
-        return ValidationUtils.validateStreamId(args.arg(2));
+        return CommandValidator.validateStreamId(context.getArg(2));
     }
 
     @Override
-    protected CommandResult executeCommand(CommandArgs args, StorageService storage) {
-        String key = args.key();
-        String id = args.arg(2);
-        Map<String, String> fields = args.fieldValueMap(3);
+    protected CommandResult executeInternal(CommandContext context) {
+        String key = context.getKey();
+        String id = context.getArg(2);
+        Map<String, String> fields = context.getFieldValueMap(3);
 
         try {
-            String entryId = storage.addStreamEntry(key, id, fields, ExpiryPolicy.never());
-            publishDataAdded(key);
+            String entryId = context.getStorageService().addStreamEntry(key, id, fields, ExpiryPolicy.never());
+            publishDataAdded(key, context.getServerContext());
+            propagateCommand(context.getArgs(), context.getServerContext());
 
-            // Propagate to replicas
-            propagateCommand(args.rawArgs());
-
-            return new CommandResult.Success(ResponseBuilder.bulkString(entryId));
+            return CommandResult.success(ResponseBuilder.bulkString(entryId));
         } catch (IllegalArgumentException e) {
-            return new CommandResult.Error(e.getMessage());
+            return CommandResult.error(e.getMessage());
         }
     }
 }

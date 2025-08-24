@@ -1,57 +1,46 @@
 package commands.impl.strings;
 
-import commands.CommandArgs;
-import commands.CommandResult;
 import commands.base.WriteCommand;
+import commands.context.CommandContext;
+import commands.result.CommandResult;
+import commands.validation.CommandValidator;
+import commands.validation.ValidationResult;
 import config.ProtocolConstants;
-import errors.ErrorCode;
-import errors.ServerError;
-import events.StorageEventPublisher;
 import protocol.ResponseBuilder;
-import storage.StorageService;
 import storage.expiry.ExpiryPolicy;
-import validation.ValidationResult;
-import validation.ValidationUtils;
 
 public final class SetCommand extends WriteCommand {
-    public SetCommand(StorageEventPublisher eventPublisher) {
-        super(eventPublisher);
-    }
-
     @Override
-    public String name() {
+    public String getName() {
         return "SET";
     }
 
     @Override
-    protected ValidationResult validateCommand(CommandArgs args) {
-        if (args.argCount() == 3) {
+    protected ValidationResult performValidation(CommandContext context) {
+        if (context.getArgCount() == 3) {
             return ValidationResult.valid();
-        } else if (args.argCount() == 5) {
-            if (!"PX".equalsIgnoreCase(args.arg(3))) {
-                return ValidationResult.invalid(
-                        ServerError.validation(ErrorCode.WRONG_ARG_COUNT.getMessage()));
+        } else if (context.getArgCount() == 5) {
+            if (!"PX".equalsIgnoreCase(context.getArg(3))) {
+                return ValidationResult.invalid("Only PX modifier is supported");
             }
-            return ValidationUtils.validateInteger(args.arg(4));
+            return CommandValidator.validateInteger(context.getArg(4));
         }
-        return ValidationUtils.validateArgRange(args, 3, 5);
+        return CommandValidator.validateArgRange(context, 3, 5);
     }
 
     @Override
-    protected CommandResult executeCommand(CommandArgs args, StorageService storage) {
-        String key = args.key();
-        String value = args.value();
+    protected CommandResult executeInternal(CommandContext context) {
+        String key = context.getKey();
+        String value = context.getValue();
 
-        ExpiryPolicy expiry = args.argCount() == 5 && "PX".equalsIgnoreCase(args.arg(3))
-                ? ExpiryPolicy.inMillis(Long.parseLong(args.arg(4)))
+        ExpiryPolicy expiry = context.getArgCount() == 5 && "PX".equalsIgnoreCase(context.getArg(3))
+                ? ExpiryPolicy.inMillis(Long.parseLong(context.getArg(4)))
                 : ExpiryPolicy.never();
 
-        storage.setString(key, value, expiry);
-        publishDataAdded(key);
+        context.getStorageService().setString(key, value, expiry);
+        publishDataAdded(key, context.getServerContext());
+        propagateCommand(context.getArgs(), context.getServerContext());
 
-        // Propagate to replicas
-        propagateCommand(args.rawArgs());
-
-        return new CommandResult.Success(ResponseBuilder.encode(ProtocolConstants.RESP_OK));
+        return CommandResult.success(ResponseBuilder.encode(ProtocolConstants.RESP_OK));
     }
 }

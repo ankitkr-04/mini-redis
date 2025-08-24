@@ -4,7 +4,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
-import commands.CommandArgs;
+import commands.context.CommandContext;
 import storage.StorageService;
 
 public record XReadArgs(
@@ -12,43 +12,43 @@ public record XReadArgs(
         Optional<Long> blockMs,
         List<String> keys,
         List<String> ids) {
-    public static XReadArgs parse(CommandArgs args) {
+    public static XReadArgs parse(CommandContext context) {
         int count = -1;
         long blockMs = -1;
         int i = 1;
 
-        while (i < args.argCount() && !args.arg(i).equalsIgnoreCase("STREAMS")) {
-            switch (args.arg(i).toUpperCase()) {
+        while (i < context.getArgCount() && !context.getArg(i).equalsIgnoreCase("STREAMS")) {
+            switch (context.getArg(i).toUpperCase()) {
                 case "COUNT" -> {
-                    if (i + 1 >= args.argCount())
+                    if (i + 1 >= context.getArgCount())
                         throw new IllegalArgumentException("COUNT requires a value");
-                    count = Integer.parseInt(args.arg(i + 1));
+                    count = Integer.parseInt(context.getArg(i + 1));
                     i += 2;
                 }
                 case "BLOCK" -> {
-                    if (i + 1 >= args.argCount())
+                    if (i + 1 >= context.getArgCount())
                         throw new IllegalArgumentException("BLOCK requires a value");
-                    blockMs = Long.parseLong(args.arg(i + 1));
+                    blockMs = Long.parseLong(context.getArg(i + 1));
                     i += 2;
                 }
                 default -> throw new IllegalArgumentException(
-                        String.format("Unexpected token: %s", args.arg(i)));
+                        String.format("Unexpected token: %s", context.getArg(i)));
             }
         }
 
-        if (i >= args.argCount() || !args.arg(i).equalsIgnoreCase("STREAMS")) {
+        if (i >= context.getArgCount() || !context.getArg(i).equalsIgnoreCase("STREAMS")) {
             throw new IllegalArgumentException("Missing STREAMS keyword");
         }
         i++;
 
-        int remaining = args.argCount() - i;
+        int remaining = context.getArgCount() - i;
         if (remaining % 2 != 0) {
             throw new IllegalArgumentException("Wrong number of arguments for XREAD STREAMS");
         }
 
         int half = remaining / 2;
-        List<String> keys = args.slice(i, i + half);
-        List<String> ids = args.slice(i + half, args.argCount());
+        List<String> keys = context.getSlice(i, i + half);
+        List<String> ids = context.getSlice(i + half, context.getArgCount());
 
         return new XReadArgs(
                 count > 0 ? Optional.of(count) : Optional.empty(),
@@ -57,11 +57,6 @@ public record XReadArgs(
                 ids);
     }
 
-    /**
-     * Return a new XReadArgs where any "$" id is replaced by the current last
-     * stream ID
-     * for that key (or "0-0" if the stream doesn't yet exist).
-     */
     public XReadArgs withResolvedIds(StorageService storage) {
         List<String> resolved = new ArrayList<>(ids.size());
         for (int i = 0; i < keys.size(); i++) {

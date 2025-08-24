@@ -1,6 +1,6 @@
 package events;
 
-public interface StorageEventListener {
+public interface EventListener {
     void onDataAdded(String key);
 
     void onDataRemoved(String key);

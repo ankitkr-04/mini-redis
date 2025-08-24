@@ -8,11 +8,12 @@ import java.util.Optional;
 import java.util.Queue;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
-import events.StorageEventListener;
+
+import events.EventListener;
 import protocol.ResponseBuilder;
 import storage.StorageService;
 
-public final class BlockingManager implements StorageEventListener {
+public final class BlockingManager implements EventListener {
     private final Map<String, Queue<BlockedClient>> waitingClients = new ConcurrentHashMap<>();
     private final Map<BlockedClient, BlockingContext> clientContexts = new ConcurrentHashMap<>();
     private final StorageService storage;
@@ -71,7 +72,8 @@ public final class BlockingManager implements StorageEventListener {
     }
 
     @Override
-    public void onDataRemoved(String key) {}
+    public void onDataRemoved(String key) {
+    }
 
     public void removeExpiredClients() {
         waitingClients.entrySet().removeIf(entry -> {

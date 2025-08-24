@@ -2,37 +2,41 @@ package commands.impl.lists;
 
 import java.util.List;
 import java.util.Optional;
-import commands.CommandArgs;
-import commands.CommandResult;
+
 import commands.base.ReadCommand;
+import commands.context.CommandContext;
+import commands.result.CommandResult;
+import commands.validation.CommandValidator;
+import commands.validation.ValidationResult;
 import protocol.ResponseBuilder;
-import storage.StorageService;
-import validation.ValidationResult;
-import validation.ValidationUtils;
 
 public final class PopCommand extends ReadCommand {
     @Override
-    public String name() {
-        return "POP"; // LPOP/RPOP
+    public String getName() {
+        return "POP"; // Will handle LPOP/RPOP
     }
 
     @Override
-    protected ValidationResult validateCommand(CommandArgs args) {
-        return ValidationUtils.validateArgRange(args, 2, 3);
+    protected ValidationResult performValidation(CommandContext context) {
+        return CommandValidator.validateArgRange(context, 2, 3);
     }
 
     @Override
-    protected CommandResult executeCommand(CommandArgs args, StorageService storage) {
-        String key = args.key();
-        boolean isLeft = "LPOP".equalsIgnoreCase(args.operation());
-        if (args.argCount() == 2) {
-            Optional<String> value = isLeft ? storage.leftPop(key) : storage.rightPop(key);
-            return new CommandResult.Success(ResponseBuilder.bulkString(value.orElse(null)));
+    protected CommandResult executeInternal(CommandContext context) {
+        String key = context.getKey();
+        boolean isLeft = "LPOP".equalsIgnoreCase(context.getOperation());
+
+        if (context.getArgCount() == 2) {
+            Optional<String> value = isLeft
+                    ? context.getStorageService().leftPop(key)
+                    : context.getStorageService().rightPop(key);
+            return CommandResult.success(ResponseBuilder.bulkString(value.orElse(null)));
         } else {
-            int count = Integer.parseInt(args.arg(2));
-            List<String> values =
-                    isLeft ? storage.leftPop(key, count) : storage.rightPop(key, count);
-            return new CommandResult.Success(ResponseBuilder.array(values));
+            int count = Integer.parseInt(context.getArg(2));
+            List<String> values = isLeft
+                    ? context.getStorageService().leftPop(key, count)
+                    : context.getStorageService().rightPop(key, count);
+            return CommandResult.success(ResponseBuilder.array(values));
         }
     }
 }
