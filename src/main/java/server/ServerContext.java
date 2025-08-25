@@ -11,6 +11,8 @@ import blocking.BlockingManager;
 import commands.registry.CommandFactory;
 import commands.registry.CommandRegistry;
 import events.EventPublisher;
+import metrics.MetricsCollector;
+import metrics.MetricsHandler;
 import protocol.CommandDispatcher;
 import pubsub.PubSubManager;
 import replication.ReplicationClient;
@@ -39,6 +41,8 @@ public final class ServerContext implements EventPublisher {
     private final PersistentRepository persistentRepository;
     private final File rdbFile;
     private final PubSubManager pubSubManager;
+    private final MetricsCollector metricsCollector;
+    private final MetricsHandler metricsHandler;
 
     public ServerContext(ServerConfiguration config) {
         this.config = config;
@@ -59,6 +63,10 @@ public final class ServerContext implements EventPublisher {
         this.blockingManager = new BlockingManager(storageService);
         this.transactionManager = new TransactionManager();
         this.pubSubManager = new PubSubManager();
+
+        // Initialize metrics
+        this.metricsCollector = new MetricsCollector();
+        this.metricsHandler = new MetricsHandler(metricsCollector);
 
         // Initialize replication
         this.replicationState = new ReplicationState(
@@ -224,5 +232,14 @@ public final class ServerContext implements EventPublisher {
     @Override
     public void publishKeyModified(String key) {
         transactionManager.invalidateWatchingClients(key);
+    }
+    
+    // Metrics getters
+    public MetricsCollector getMetricsCollector() {
+        return metricsCollector;
+    }
+    
+    public MetricsHandler getMetricsHandler() {
+        return metricsHandler;
     }
 }

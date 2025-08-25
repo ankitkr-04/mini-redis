@@ -37,4 +37,5 @@ module redis {
     exports commands.validation;
     exports config;
     exports utils;
+    exports metrics;
 }

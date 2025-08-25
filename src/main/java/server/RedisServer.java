@@ -86,13 +86,13 @@ public final class RedisServer {
 
     private void handleSelectionKey(SelectionKey key, Selector selector) throws IOException {
         if (key.isAcceptable()) {
-            ClientConnectionHandler.acceptNewConnection(key, selector);
+            ClientConnectionHandler.acceptNewConnection(key, selector, context);
         } else if (key.isReadable()) {
             Object attachment = key.attachment();
             if (attachment instanceof ReplicationClient) {
                 ((ReplicationClient) attachment).handleKey(key);
             } else {
-                ClientConnectionHandler.handleClientRequest(key, context.getCommandDispatcher());
+                ClientConnectionHandler.handleClientRequest(key, context.getCommandDispatcher(), context);
             }
         } else if (key.isConnectable()) {
             Object attachment = key.attachment();

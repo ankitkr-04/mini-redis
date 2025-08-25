@@ -47,7 +47,11 @@ public final class StorageService {
 
     // String operations
     public void setString(String key, String value, ExpiryPolicy expiry) {
+        boolean isNewKey = !stringRepo.exists(key);
         stringRepo.put(key, value, expiry);
+        if (isNewKey && eventPublisher != null && eventPublisher instanceof server.ServerContext) {
+            ((server.ServerContext) eventPublisher).getMetricsCollector().incrementKeyCount("string");
+        }
         notifyKeyModified(key);
     }
 
@@ -205,11 +209,32 @@ public final class StorageService {
     }
 
     public boolean delete(String key) {
-        boolean result = store.remove(key) != null;
-        if (result) {
+        StoredValue<?> deletedValue = store.remove(key);
+        if (deletedValue != null) {
+            // Update metrics for deleted key type
+            if (eventPublisher != null && eventPublisher instanceof server.ServerContext) {
+                var metricsCollector = ((server.ServerContext) eventPublisher).getMetricsCollector();
+                switch (deletedValue.type()) {
+                    case STRING:
+                        metricsCollector.decrementKeyCount("string");
+                        break;
+                    case LIST:
+                        metricsCollector.decrementKeyCount("list");
+                        break;
+                    case STREAM:
+                        metricsCollector.decrementKeyCount("stream");
+                        break;
+                    case ZSET:
+                        metricsCollector.decrementKeyCount("zset");
+                        break;
+                    default:
+                        break;
+                }
+            }
             notifyKeyModified(key);
+            return true;
         }
-        return result;
+        return false;
     }
 
     public ValueType getType(String key) {

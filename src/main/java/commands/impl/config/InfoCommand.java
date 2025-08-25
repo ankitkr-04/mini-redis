@@ -42,6 +42,7 @@ public final class InfoCommand extends ReadCommand {
         if (section == null || section.equals("all")) {
             info.putAll(getServerInfo(context));
             info.putAll(getReplicationInfo(context));
+            info.putAll(getMetricsInfo(context));
             // Add more sections here as needed (e.g., memory, clients)
         } else {
             // Handle specific sections
@@ -51,6 +52,9 @@ public final class InfoCommand extends ReadCommand {
                     break;
                 case "replication":
                     info.putAll(getReplicationInfo(context));
+                    break;
+                case "metrics":
+                    info.putAll(getMetricsInfo(context));
                     break;
                 // Add more cases for additional sections
                 default:
@@ -77,5 +81,25 @@ public final class InfoCommand extends ReadCommand {
 
     private Map<String, String> getReplicationInfo(CommandContext context) {
         return context.getServerContext().getReplicationState().toInfoMap();
+    }
+    
+    private Map<String, String> getMetricsInfo(CommandContext context) {
+        var metricsHandler = context.getServerContext().getMetricsHandler();
+        Map<String, String> metricsInfo = new LinkedHashMap<>();
+        
+        if (metricsHandler != null) {
+            Map<String, Object> allMetrics = metricsHandler.getAllMetrics();
+            
+            // Convert metrics to string format for INFO output
+            metricsInfo.put("active_connections", String.valueOf(allMetrics.get("active_connections")));
+            metricsInfo.put("total_commands_processed", String.valueOf(allMetrics.get("total_commands_processed")));
+            metricsInfo.put("total_errors", String.valueOf(allMetrics.get("total_errors")));
+            metricsInfo.put("memory_usage_bytes", String.valueOf(allMetrics.get("memory_usage_bytes")));
+            
+            Double uptimeSeconds = (Double) allMetrics.get("uptime_seconds");
+            metricsInfo.put("uptime_seconds", String.format("%.0f", uptimeSeconds != null ? uptimeSeconds : 0.0));
+        }
+        
+        return metricsInfo;
     }
 }

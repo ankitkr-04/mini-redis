@@ -20,7 +20,7 @@ public final class ClientConnectionHandler {
     private ClientConnectionHandler() {
     } // Utility class
 
-    public static void acceptNewConnection(SelectionKey key, Selector selector) throws IOException {
+    public static void acceptNewConnection(SelectionKey key, Selector selector, ServerContext serverContext) throws IOException {
         ServerSocketChannel serverChannel = (ServerSocketChannel) key.channel();
         SocketChannel clientChannel = serverChannel.accept();
 
@@ -28,10 +28,13 @@ public final class ClientConnectionHandler {
             clientChannel.configureBlocking(false);
             clientChannel.register(selector, SelectionKey.OP_READ, ByteBuffer.allocate(BUFFER_SIZE));
             log.info("Client connected: {}", clientChannel.getRemoteAddress());
+            
+            // Update connection metrics
+            serverContext.getMetricsCollector().incrementActiveConnections();
         }
     }
 
-    public static void handleClientRequest(SelectionKey key, CommandDispatcher dispatcher) throws IOException {
+    public static void handleClientRequest(SelectionKey key, CommandDispatcher dispatcher, ServerContext serverContext) throws IOException {
         SocketChannel clientChannel = (SocketChannel) key.channel();
         ByteBuffer buffer = (ByteBuffer) key.attachment();
 
@@ -49,6 +52,10 @@ public final class ClientConnectionHandler {
 
         } else if (bytesRead == -1) {
             log.info("Client disconnected: {}", clientChannel.getRemoteAddress());
+            
+            // Update connection metrics
+            serverContext.getMetricsCollector().decrementActiveConnections();
+            
             key.cancel();
             clientChannel.close();
         }

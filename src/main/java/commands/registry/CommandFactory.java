@@ -5,6 +5,7 @@ import commands.impl.basic.PingCommand;
 import commands.impl.basic.TypeCommand;
 import commands.impl.config.ConfigCommand;
 import commands.impl.config.InfoCommand;
+import commands.impl.config.MetricsCommand;
 import commands.impl.keys.KeysComamnd;
 import commands.impl.lists.BlockingPopCommand;
 import commands.impl.lists.LengthCommand;
@@ -52,6 +53,7 @@ public final class CommandFactory {
         // Configuration commands
         registry.register(new InfoCommand());
         registry.register(new ConfigCommand());
+        registry.register(new MetricsCommand());
 
         // String commands
         registry.register(new GetCommand());
