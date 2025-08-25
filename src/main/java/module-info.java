@@ -12,6 +12,7 @@ module redis {
     exports commands.result;
     exports commands.impl.basic;
     exports commands.impl.lists;
+    exports commands.impl.sortedsets;
     exports commands.impl.streams;
     exports commands.impl.strings;
     exports commands.impl.transaction;

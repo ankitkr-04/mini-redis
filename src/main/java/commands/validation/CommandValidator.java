@@ -36,6 +36,15 @@ public final class CommandValidator {
         }
     }
 
+    public static ValidationResult validateDouble(String value) {
+        try {
+            Double.parseDouble(value);
+            return ValidationResult.valid();
+        } catch (NumberFormatException e) {
+            return ValidationResult.invalid("Invalid number: " + value);
+        }
+    }
+
     public static ValidationResult validateTimeout(String value) {
         try {
             double timeout = Double.parseDouble(value);

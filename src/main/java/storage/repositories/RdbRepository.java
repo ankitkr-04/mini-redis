@@ -64,7 +64,7 @@ public class RdbRepository implements PersistentRepository {
         if (!rdbFile.exists()) {
             return;
         }
-        
+
         validateFile(rdbFile);
 
         try (DataInputStream in = new DataInputStream(new FileInputStream(rdbFile))) {

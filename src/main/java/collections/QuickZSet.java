@@ -1,164 +1,159 @@
 package collections;
 
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.TreeSet;
-import java.util.concurrent.locks.StampedLock;
+import java.util.Optional;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentSkipListMap;
+import java.util.concurrent.ConcurrentSkipListSet;
 
-/**
- * QuickZSet: Redis-like Sorted Set implementation
- * Supports:
- * - O(log N) insert/remove using skip list ordering
- * - Range queries by index with negative indexes
- * - Pop min/max
- * - Membership lookup in O(1)
- */
 public final class QuickZSet {
-    public static final class ZSetEntry implements Comparable<ZSetEntry> {
-        public final String member;
-        public final double score;
+    private final ConcurrentSkipListMap<Double, ConcurrentSkipListSet<String>> scoreMap = new ConcurrentSkipListMap<>();
+    private final ConcurrentHashMap<String, Double> memberMap = new ConcurrentHashMap<>();
 
-        public ZSetEntry(String member, double score) {
-            this.member = member;
-            this.score = score;
-        }
-
-        @Override
-        public int compareTo(ZSetEntry o) {
-            int cmp = Double.compare(this.score, o.score);
-            return cmp != 0 ? cmp : this.member.compareTo(o.member);
-        }
-
-        @Override
-        public String toString() {
-            return member + "(" + score + ")";
-        }
-    }
-
-    private final StampedLock lock = new StampedLock();
-    private final Map<String, ZSetEntry> memberMap = new HashMap<>();
-    private final TreeSet<ZSetEntry> orderedSet = new TreeSet<>();
-
-    /** Add or update a member with a score */
+    /** Add or update a member */
     public void add(String member, double score) {
-        long stamp = lock.writeLock();
-        try {
-            ZSetEntry old = memberMap.get(member);
-            if (old != null) {
-                orderedSet.remove(old);
-            }
-            ZSetEntry entry = new ZSetEntry(member, score);
-            orderedSet.add(entry);
-            memberMap.put(member, entry);
-        } finally {
-            lock.unlockWrite(stamp);
+        Double oldScore = memberMap.put(member, score);
+        if (oldScore != null) {
+            scoreMap.computeIfPresent(oldScore, (k, set) -> {
+                set.remove(member);
+                return set.isEmpty() ? null : set;
+            });
         }
+        scoreMap.compute(score, (k, set) -> {
+            if (set == null)
+                set = new ConcurrentSkipListSet<>();
+            set.add(member);
+            return set;
+        });
     }
 
     /** Remove a member */
     public boolean remove(String member) {
-        long stamp = lock.writeLock();
-        try {
-            ZSetEntry old = memberMap.remove(member);
-            if (old != null) {
-                orderedSet.remove(old);
-                return true;
-            }
+        Double score = memberMap.remove(member);
+        if (score == null)
             return false;
-        } finally {
-            lock.unlockWrite(stamp);
+        scoreMap.computeIfPresent(score, (k, set) -> {
+            set.remove(member);
+            return set.isEmpty() ? null : set;
+        });
+        return true;
+    }
+
+    /** Pop member with smallest score */
+    public Optional<ZSetEntry> popMin() {
+        while (!scoreMap.isEmpty()) {
+            Map.Entry<Double, ConcurrentSkipListSet<String>> entry = scoreMap.firstEntry();
+            if (entry == null)
+                return Optional.empty();
+            String member = entry.getValue().pollFirst();
+            if (member != null) {
+                memberMap.remove(member);
+                if (entry.getValue().isEmpty())
+                    scoreMap.remove(entry.getKey(), entry.getValue());
+                return Optional.of(new ZSetEntry(member, entry.getKey()));
+            }
         }
+        return Optional.empty();
     }
 
-    /** Pop the member with the smallest score */
-    public ZSetEntry popMin() {
-        long stamp = lock.writeLock();
-        try {
-            ZSetEntry first = orderedSet.pollFirst();
-            if (first != null)
-                memberMap.remove(first.member);
-            return first;
-        } finally {
-            lock.unlockWrite(stamp);
+    /** Pop member with largest score */
+    public Optional<ZSetEntry> popMax() {
+        while (!scoreMap.isEmpty()) {
+            Map.Entry<Double, ConcurrentSkipListSet<String>> entry = scoreMap.lastEntry();
+            if (entry == null)
+                return Optional.empty();
+            String member = entry.getValue().pollLast();
+            if (member != null) {
+                memberMap.remove(member);
+                if (entry.getValue().isEmpty())
+                    scoreMap.remove(entry.getKey(), entry.getValue());
+                return Optional.of(new ZSetEntry(member, entry.getKey()));
+            }
         }
+        return Optional.empty();
     }
 
-    /** Pop the member with the largest score */
-    public ZSetEntry popMax() {
-        long stamp = lock.writeLock();
-        try {
-            ZSetEntry last = orderedSet.pollLast();
-            if (last != null)
-                memberMap.remove(last.member);
-            return last;
-        } finally {
-            lock.unlockWrite(stamp);
-        }
-    }
-
-    /** Get size */
-    public int size() {
-        long stamp = lock.tryOptimisticRead();
-        int sz = memberMap.size();
-        return lock.validate(stamp) ? sz : memberMap.size();
-    }
-
-    /** Get range by rank (supports negative indexes) */
+    /** Range by index, supports negative indices */
     public List<ZSetEntry> range(int start, int end) {
-        long stamp = lock.readLock();
-        try {
-            if (start < 0)
-                start = size() + start;
-            if (end < 0)
-                end = size() + end;
-            start = Math.max(0, start);
-            end = Math.min(size() - 1, end);
-            if (start > end)
-                return List.of();
+        int size = memberMap.size();
+        if (start < 0)
+            start += size;
+        if (end < 0)
+            end += size;
+        start = Math.max(0, start);
+        end = Math.min(size - 1, end);
+        if (start > end)
+            return List.of();
 
-            List<ZSetEntry> result = new ArrayList<>(end - start + 1);
-            int idx = 0;
-            for (ZSetEntry e : orderedSet) {
+        List<ZSetEntry> result = new ArrayList<>(end - start + 1);
+        int idx = 0;
+        for (var entry : scoreMap.entrySet()) {
+            for (String member : entry.getValue()) {
                 if (idx > end)
-                    break;
+                    return result;
                 if (idx >= start)
-                    result.add(e);
+                    result.add(new ZSetEntry(member, entry.getKey()));
                 idx++;
             }
-            return result;
-        } finally {
-            lock.unlockRead(stamp);
         }
+        return result;
     }
 
-    /** Get range by score (inclusive) */
+    /** Range by score inclusive */
     public List<ZSetEntry> rangeByScore(double min, double max) {
-        long stamp = lock.readLock();
-        try {
-            ZSetEntry low = new ZSetEntry("", min);
-            ZSetEntry high = new ZSetEntry("", max);
-            return new ArrayList<>(orderedSet.subSet(low, true, high, true));
-        } finally {
-            lock.unlockRead(stamp);
-        }
+        List<ZSetEntry> result = new ArrayList<>();
+        scoreMap.subMap(min, true, max, true).forEach((score, set) -> {
+            for (String member : set)
+                result.add(new ZSetEntry(member, score));
+        });
+        return result;
     }
 
     /** Check if member exists */
     public boolean contains(String member) {
-        long stamp = lock.tryOptimisticRead();
-        boolean exists = memberMap.containsKey(member);
-        return lock.validate(stamp) ? exists : memberMap.containsKey(member);
+        return memberMap.containsKey(member);
     }
 
-    @Override
-    public String toString() {
-        long stamp = lock.readLock();
-        try {
-            return "QuickZSet" + orderedSet.toString();
-        } finally {
-            lock.unlockRead(stamp);
+    /** Get size */
+    public int size() {
+        return memberMap.size();
+    }
+
+    /** Get score for a member */
+    public Double getScore(String member) {
+        return memberMap.get(member);
+    }
+
+    /** Get rank (0-based index) for a member */
+    public Long getRank(String member) {
+        Double memberScore = memberMap.get(member);
+        if (memberScore == null) {
+            return null;
         }
+
+        long rank = 0;
+        for (var entry : scoreMap.entrySet()) {
+            if (entry.getKey().equals(memberScore)) {
+                // Found the score bucket, find position within it
+                for (String m : entry.getValue()) {
+                    if (m.equals(member)) {
+                        return rank;
+                    }
+                    rank++;
+                }
+            } else if (entry.getKey() < memberScore) {
+                // All members in this bucket have lower scores
+                rank += entry.getValue().size();
+            } else {
+                // Higher score bucket, member not found
+                break;
+            }
+        }
+        return null;
+    }
+
+    public record ZSetEntry(String member, double score) {
     }
 }

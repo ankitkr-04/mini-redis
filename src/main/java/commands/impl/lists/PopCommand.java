@@ -3,14 +3,14 @@ package commands.impl.lists;
 import java.util.List;
 import java.util.Optional;
 
-import commands.base.ReadCommand;
+import commands.base.WriteCommand;
 import commands.context.CommandContext;
 import commands.result.CommandResult;
 import commands.validation.CommandValidator;
 import commands.validation.ValidationResult;
 import protocol.ResponseBuilder;
 
-public final class PopCommand extends ReadCommand {
+public final class PopCommand extends WriteCommand {
     @Override
     public String getName() {
         return "POP"; // Will handle LPOP/RPOP

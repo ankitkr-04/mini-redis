@@ -17,6 +17,12 @@ import commands.impl.pubsub.UnsubscribeCommand;
 import commands.impl.replication.PsyncCommand;
 import commands.impl.replication.ReplconfCommand;
 import commands.impl.replication.WaitCommand;
+import commands.impl.sortedsets.ZAddCommand;
+import commands.impl.sortedsets.ZCardCommand;
+import commands.impl.sortedsets.ZRangeCommand;
+import commands.impl.sortedsets.ZRankCommand;
+import commands.impl.sortedsets.ZRemCommand;
+import commands.impl.sortedsets.ZScoreCommand;
 import commands.impl.streams.AddStreamCommand;
 import commands.impl.streams.RangeStreamCommand;
 import commands.impl.streams.ReadStreamCommand;
@@ -77,6 +83,13 @@ public final class CommandFactory {
         registry.register(new UnsubscribeCommand(), "UNSUBSCRIBE", "PUNSUBSCRIBE");
         registry.register(new PublishCommand());
 
+        // SortedSet commands
+        registry.register(new ZAddCommand());
+        registry.register(new ZCardCommand());
+        registry.register(new ZRangeCommand());
+        registry.register(new ZRankCommand());
+        registry.register(new ZRemCommand());
+        registry.register(new ZScoreCommand());
         return registry;
     }
 }

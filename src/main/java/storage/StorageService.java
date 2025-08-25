@@ -5,10 +5,12 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 
+import collections.QuickZSet;
 import storage.expiry.ExpiryPolicy;
 import storage.repositories.ListRepository;
 import storage.repositories.StreamRepository;
 import storage.repositories.StringRepository;
+import storage.repositories.ZSetRepository;
 import storage.types.StoredValue;
 import storage.types.ValueType;
 import storage.types.streams.StreamRangeEntry;
@@ -18,11 +20,13 @@ public final class StorageService {
     private final StringRepository stringRepo;
     private final ListRepository listRepo;
     private final StreamRepository streamRepo;
+    private final ZSetRepository zSetRepo;
 
     public StorageService() {
         this.stringRepo = new StringRepository(store);
         this.listRepo = new ListRepository(store);
         this.streamRepo = new StreamRepository(store);
+        this.zSetRepo = new ZSetRepository(store);
     }
 
     public Map<String, StoredValue<?>> getStore() {
@@ -95,6 +99,53 @@ public final class StorageService {
 
     public List<StreamRangeEntry> getStreamAfter(String key, String afterId, int count) {
         return streamRepo.getAfter(key, afterId, count);
+    }
+
+    // === ZSet operations ===
+
+    /** Add or update a member with a score */
+    public void zAdd(String key, String member, double score) {
+        zSetRepo.add(key, member, score);
+    }
+
+    /** Remove a member */
+    public boolean zRemove(String key, String member) {
+        return zSetRepo.remove(key, member);
+    }
+
+    /** Pop member with smallest score */
+    public Optional<QuickZSet.ZSetEntry> zPopMin(String key) {
+        return zSetRepo.popMin(key);
+    }
+
+    /** Pop member with largest score */
+    public Optional<QuickZSet.ZSetEntry> zPopMax(String key) {
+        return zSetRepo.popMax(key);
+    }
+
+    /** Get range by rank (supports negative indices) */
+    public List<QuickZSet.ZSetEntry> zRange(String key, int start, int end) {
+        return zSetRepo.range(key, start, end);
+    }
+
+    /** Get range by score */
+    public List<QuickZSet.ZSetEntry> zRangeByScore(String key, double min, double max) {
+        return zSetRepo.rangeByScore(key, min, max);
+    }
+
+    /** Get size */
+    public int zSize(String key) {
+        return zSetRepo.size(key);
+    }
+
+    /** Get score for member */
+    public Double zScore(String key, String member) {
+        return zSetRepo.getScore(key, member);
+    }
+
+    /** Get rank for member */
+    public Long zRank(String key, String member) {
+        return zSetRepo.getRank(key, member);
     }
 
     // General operations
