@@ -60,6 +60,11 @@ public class RdbRepository implements PersistentRepository {
 
     @Override
     public void loadSnapshot(File rdbFile) throws IOException {
+        // If file doesn't exist, just return - this is normal for a fresh start
+        if (!rdbFile.exists()) {
+            return;
+        }
+        
         validateFile(rdbFile);
 
         try (DataInputStream in = new DataInputStream(new FileInputStream(rdbFile))) {
@@ -198,7 +203,7 @@ public class RdbRepository implements PersistentRepository {
     }
 
     private void validateFile(File rdbFile) {
-        if (!rdbFile.exists() || !rdbFile.isFile()) {
+        if (!rdbFile.isFile()) {
             throw new IllegalArgumentException("Invalid RDB file: " + rdbFile.getAbsolutePath());
         }
     }

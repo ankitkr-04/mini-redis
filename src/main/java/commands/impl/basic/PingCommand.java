@@ -36,7 +36,7 @@ public final class PingCommand extends ReadCommand {
             // Pub/Sub mode → always array reply: ["pong", <message or "">]
             String second = (message != null) ? message : "";
             response = ResponseBuilder.array(List.of(
-                    ProtocolConstants.PONG_RESPONSE,
+                    ProtocolConstants.PONG_RESPONSE.toLowerCase(),
                     second));
         } else if (message == null) {
             // No argument → simple string "PONG"
