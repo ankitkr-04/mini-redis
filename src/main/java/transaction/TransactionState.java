@@ -1,7 +1,9 @@
 package transaction;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 import commands.context.CommandContext;
 import commands.core.Command;
@@ -10,6 +12,8 @@ import errors.ErrorCode;
 public final class TransactionState {
     private boolean inTransaction = false;
     private final List<QueuedCommand> queuedCommands = new ArrayList<>();
+    private final Set<String> watchedKeys = new HashSet<>();
+    private boolean transactionInvalid = false;
 
     public record QueuedCommand(Command command, String operation, String[] rawArgs) {
     }
@@ -37,5 +41,35 @@ public final class TransactionState {
     public void clearTransaction() {
         this.inTransaction = false;
         this.queuedCommands.clear();
+        this.transactionInvalid = false;
+    }
+
+    public void addWatchedKey(String key) {
+        watchedKeys.add(key);
+    }
+
+    public void clearWatchedKeys() {
+        watchedKeys.clear();
+        transactionInvalid = false;
+    }
+
+    public Set<String> getWatchedKeys() {
+        return Set.copyOf(watchedKeys);
+    }
+
+    public boolean hasWatchedKeys() {
+        return !watchedKeys.isEmpty();
+    }
+
+    public void invalidateTransaction() {
+        transactionInvalid = true;
+    }
+
+    public boolean isTransactionInvalid() {
+        return transactionInvalid;
+    }
+
+    public boolean isKeyWatched(String key) {
+        return watchedKeys.contains(key);
     }
 }

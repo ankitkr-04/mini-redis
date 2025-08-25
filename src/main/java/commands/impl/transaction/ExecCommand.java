@@ -25,13 +25,26 @@ public final class ExecCommand extends WriteCommand {
 
     @Override
     protected CommandResult executeInternal(CommandContext context) {
-        var state = context.getServerContext().getTransactionManager().getOrCreateState(context.getClientChannel());
+        var transactionManager = context.getServerContext().getTransactionManager();
+        var state = transactionManager.getOrCreateState(context.getClientChannel());
+
         if (!state.isInTransaction())
             return CommandResult.error(ErrorCode.EXEC_WITHOUT_MULTI.getMessage());
+
+        // Check if any watched keys have been modified (optimistic locking)
+        if (state.isTransactionInvalid()) {
+            state.clearTransaction();
+            state.clearWatchedKeys();
+            return CommandResult.success(ResponseBuilder.encode(ProtocolConstants.RESP_NULL_ARRAY));
+        }
+
         var queuedCommands = state.getQueuedCommands();
         state.clearTransaction();
+        state.clearWatchedKeys(); // Clear watched keys after successful execution
+
         if (queuedCommands.isEmpty())
             return CommandResult.success(ResponseBuilder.encode(ProtocolConstants.RESP_EMPTY_ARRAY));
+
         var results = new ArrayList<ByteBuffer>();
         for (var queued : queuedCommands) {
             CommandResult result = queued.command().execute(new CommandContext(queued.operation(), queued.rawArgs(),

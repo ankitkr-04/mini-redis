@@ -35,7 +35,7 @@ public enum ErrorCode {
                         "EXEC without MULTI"),
         DISCARD_WITHOUT_MULTI(
                         "DISCARD without MULTI"),
-        WATCH_WITHOUT_MULTI("WATCH inside MULTI is not allowed"), UNWATCH_WITHOUT_WATCH(
+        WATCH_INSIDE_MULTI("WATCH inside MULTI is not allowed"), UNWATCH_WITHOUT_WATCH(
                         "UNWATCH without WATCH"),
 
         // Replication errors

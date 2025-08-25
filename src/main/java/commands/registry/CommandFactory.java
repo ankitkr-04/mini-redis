@@ -32,6 +32,8 @@ import commands.impl.strings.SetCommand;
 import commands.impl.transaction.DiscardCommand;
 import commands.impl.transaction.ExecCommand;
 import commands.impl.transaction.MultiCommand;
+import commands.impl.transaction.UnwatchCommand;
+import commands.impl.transaction.WatchCommand;
 import server.ServerContext;
 
 public final class CommandFactory {
@@ -72,6 +74,8 @@ public final class CommandFactory {
         registry.register(new MultiCommand());
         registry.register(new ExecCommand());
         registry.register(new DiscardCommand());
+        registry.register(new WatchCommand());
+        registry.register(new UnwatchCommand());
 
         // Replication commands
         registry.register(new PsyncCommand());

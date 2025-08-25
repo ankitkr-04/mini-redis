@@ -3,34 +3,29 @@ package commands.impl.transaction;
 import commands.base.WriteCommand;
 import commands.context.CommandContext;
 import commands.result.CommandResult;
-import commands.validation.CommandValidator;
 import commands.validation.ValidationResult;
 import config.ProtocolConstants;
-import errors.ErrorCode;
 import protocol.ResponseBuilder;
 
-public final class DiscardCommand extends WriteCommand {
+public final class UnwatchCommand extends WriteCommand {
     @Override
     public String getName() {
-        return "DISCARD";
+        return "UNWATCH";
     }
 
     @Override
     protected ValidationResult performValidation(CommandContext context) {
-        return CommandValidator.validateArgCount(context, 1);
+        return ValidationResult.valid();
     }
 
     @Override
     protected CommandResult executeInternal(CommandContext context) {
         var transactionManager = context.getServerContext().getTransactionManager();
-        var state = transactionManager.getOrCreateState(context.getClientChannel());
+        var clientChannel = context.getClientChannel();
 
-        if (!state.isInTransaction()) {
-            return CommandResult.error(ErrorCode.DISCARD_WITHOUT_MULTI.getMessage());
-        }
+        // Clear all watched keys for this client
+        transactionManager.unwatchAllKeys(clientChannel);
 
-        state.clearTransaction();
-        state.clearWatchedKeys(); // Clear watched keys when discarding
         return CommandResult.success(ResponseBuilder.encode(ProtocolConstants.RESP_OK));
     }
 }

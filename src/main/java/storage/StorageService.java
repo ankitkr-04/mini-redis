@@ -6,6 +6,7 @@ import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 
 import collections.QuickZSet;
+import events.EventPublisher;
 import storage.expiry.ExpiryPolicy;
 import storage.repositories.ListRepository;
 import storage.repositories.StreamRepository;
@@ -21,12 +22,23 @@ public final class StorageService {
     private final ListRepository listRepo;
     private final StreamRepository streamRepo;
     private final ZSetRepository zSetRepo;
+    private EventPublisher eventPublisher;
 
     public StorageService() {
         this.stringRepo = new StringRepository(store);
         this.listRepo = new ListRepository(store);
         this.streamRepo = new StreamRepository(store);
         this.zSetRepo = new ZSetRepository(store);
+    }
+
+    public void setEventPublisher(EventPublisher eventPublisher) {
+        this.eventPublisher = eventPublisher;
+    }
+
+    private void notifyKeyModified(String key) {
+        if (eventPublisher != null) {
+            eventPublisher.publishKeyModified(key);
+        }
     }
 
     public Map<String, StoredValue<?>> getStore() {
@@ -36,6 +48,7 @@ public final class StorageService {
     // String operations
     public void setString(String key, String value, ExpiryPolicy expiry) {
         stringRepo.put(key, value, expiry);
+        notifyKeyModified(key);
     }
 
     public Optional<String> getString(String key) {
@@ -43,32 +56,54 @@ public final class StorageService {
     }
 
     public long incrementString(String key) {
-        return stringRepo.increment(key);
+        long result = stringRepo.increment(key);
+        notifyKeyModified(key);
+        return result;
     }
 
     // List operations
     public int leftPush(String key, String... values) {
-        return listRepo.pushLeft(key, values);
+        int result = listRepo.pushLeft(key, values);
+        notifyKeyModified(key);
+        return result;
     }
 
     public int rightPush(String key, String... values) {
-        return listRepo.pushRight(key, values);
+        int result = listRepo.pushRight(key, values);
+        notifyKeyModified(key);
+        return result;
     }
 
     public Optional<String> leftPop(String key) {
-        return listRepo.popLeft(key);
+        Optional<String> result = listRepo.popLeft(key);
+        if (result.isPresent()) {
+            notifyKeyModified(key);
+        }
+        return result;
     }
 
     public Optional<String> rightPop(String key) {
-        return listRepo.popRight(key);
+        Optional<String> result = listRepo.popRight(key);
+        if (result.isPresent()) {
+            notifyKeyModified(key);
+        }
+        return result;
     }
 
     public List<String> leftPop(String key, int count) {
-        return listRepo.popLeft(key, count);
+        List<String> result = listRepo.popLeft(key, count);
+        if (!result.isEmpty()) {
+            notifyKeyModified(key);
+        }
+        return result;
     }
 
     public List<String> rightPop(String key, int count) {
-        return listRepo.popRight(key, count);
+        List<String> result = listRepo.popRight(key, count);
+        if (!result.isEmpty()) {
+            notifyKeyModified(key);
+        }
+        return result;
     }
 
     public List<String> getListRange(String key, int start, int end) {
@@ -82,7 +117,9 @@ public final class StorageService {
     // Stream operations
     public String addStreamEntry(String key, String id, Map<String, String> fields,
             ExpiryPolicy expiry) {
-        return streamRepo.addEntry(key, id, fields, expiry);
+        String result = streamRepo.addEntry(key, id, fields, expiry);
+        notifyKeyModified(key);
+        return result;
     }
 
     public Optional<String> getLastStreamId(String key) {
@@ -105,22 +142,36 @@ public final class StorageService {
 
     /** Add or update a member with a score, returns true if new member was added */
     public boolean zAdd(String key, String member, double score) {
-        return zSetRepo.add(key, member, score);
+        boolean result = zSetRepo.add(key, member, score);
+        notifyKeyModified(key);
+        return result;
     }
 
     /** Remove a member */
     public boolean zRemove(String key, String member) {
-        return zSetRepo.remove(key, member);
+        boolean result = zSetRepo.remove(key, member);
+        if (result) {
+            notifyKeyModified(key);
+        }
+        return result;
     }
 
     /** Pop member with smallest score */
     public Optional<QuickZSet.ZSetEntry> zPopMin(String key) {
-        return zSetRepo.popMin(key);
+        Optional<QuickZSet.ZSetEntry> result = zSetRepo.popMin(key);
+        if (result.isPresent()) {
+            notifyKeyModified(key);
+        }
+        return result;
     }
 
     /** Pop member with largest score */
     public Optional<QuickZSet.ZSetEntry> zPopMax(String key) {
-        return zSetRepo.popMax(key);
+        Optional<QuickZSet.ZSetEntry> result = zSetRepo.popMax(key);
+        if (result.isPresent()) {
+            notifyKeyModified(key);
+        }
+        return result;
     }
 
     /** Get range by rank (supports negative indices) */
@@ -154,7 +205,11 @@ public final class StorageService {
     }
 
     public boolean delete(String key) {
-        return store.remove(key) != null;
+        boolean result = store.remove(key) != null;
+        if (result) {
+            notifyKeyModified(key);
+        }
+        return result;
     }
 
     public ValueType getType(String key) {

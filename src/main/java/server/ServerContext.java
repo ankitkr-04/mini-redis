@@ -45,6 +45,7 @@ public final class ServerContext implements EventPublisher {
         rdbFile = new File(config.dataDirectory(), config.databaseFilename());
 
         this.storageService = new StorageService();
+        this.storageService.setEventPublisher(this); // Set event publisher for key modification notifications
         persistentRepository = config.appendOnlyMode()
                 ? new AofRepository(storageService.getStore()) // future
                 : new RdbRepository(storageService.getStore());
@@ -184,5 +185,10 @@ public final class ServerContext implements EventPublisher {
     @Override
     public void publishDataRemoved(String key) {
         blockingManager.onDataRemoved(key);
+    }
+
+    @Override
+    public void publishKeyModified(String key) {
+        transactionManager.invalidateWatchingClients(key);
     }
 }
