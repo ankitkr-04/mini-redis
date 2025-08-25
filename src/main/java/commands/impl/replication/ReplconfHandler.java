@@ -10,6 +10,7 @@ import commands.context.CommandContext;
 import commands.result.CommandResult;
 import commands.validation.CommandValidator;
 import commands.validation.ValidationResult;
+import config.ProtocolConstants;
 import protocol.ResponseBuilder;
 
 @FunctionalInterface
@@ -49,7 +50,7 @@ class ListeningPortHandler implements ReplconfHandler {
         }
 
         log.debug("Replica listening on port: {}", value);
-        return CommandResult.async(); // Success
+        return CommandResult.success(ResponseBuilder.encode(ProtocolConstants.RESP_OK)); // Return OK response
     }
 }
 
@@ -59,7 +60,7 @@ class CapabilityHandler implements ReplconfHandler {
     @Override
     public CommandResult handle(String key, String value, CommandContext context) {
         log.debug("Replica capability: {}", value);
-        return CommandResult.async();// Success
+        return CommandResult.success(ResponseBuilder.encode(ProtocolConstants.RESP_OK)); // Return OK response
     }
 }
 
@@ -75,7 +76,7 @@ class AckHandler implements ReplconfHandler {
         }
 
         long offset = Long.parseLong(value);
-        log.trace("Replica ACK offset: {}", offset);
+        log.info("Replica ACK offset: {} from channel: {}", offset, context.getClientChannel());
 
         // Update the replica offset for this client
         context.getServerContext().getReplicationManager().updateReplicaOffset(context.getClientChannel(), offset);

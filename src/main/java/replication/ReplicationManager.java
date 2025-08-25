@@ -57,7 +57,11 @@ public final class ReplicationManager {
     public void updateReplicaOffset(SocketChannel channel, long offset) {
         AtomicLong replicaOffset = replicaOffsets.get(channel);
         if (replicaOffset != null) {
+            long oldOffset = replicaOffset.get();
             replicaOffset.set(offset);
+            log.info("Updated replica offset for {}: {} -> {}", getChannelInfo(channel), oldOffset, offset);
+        } else {
+            log.warn("No replica offset found for channel: {}", getChannelInfo(channel));
         }
     }
 
@@ -82,9 +86,16 @@ public final class ReplicationManager {
     // Wait for replication to specified number of replicas at given offset or
     // timeout
     public int getSyncReplicasCount(long targetOffset) {
-        return (int) replicaOffsets.values().stream()
+        int count = (int) replicaOffsets.values().stream()
                 .filter(offset -> offset.get() >= targetOffset)
                 .count();
+        log.info("getSyncReplicasCount({}): {} replicas synced. Current offsets: {}",
+                targetOffset, count,
+                replicaOffsets.entrySet().stream()
+                        .collect(java.util.stream.Collectors.toMap(
+                                e -> getChannelInfo(e.getKey()),
+                                e -> e.getValue().get())));
+        return count;
     }
 
     public void sendGetAckToAllReplicas() {
