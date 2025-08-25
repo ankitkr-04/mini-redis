@@ -1,4 +1,4 @@
-package storage.repositories;
+package storage.persistence;
 
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
@@ -16,7 +16,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import protocol.ProtocolParser;
-import storage.PersistentRepository;
 import storage.StorageService;
 import storage.types.StoredValue;
 

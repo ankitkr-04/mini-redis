@@ -17,10 +17,10 @@ import replication.ReplicationClient;
 import replication.ReplicationManager;
 import replication.ReplicationState;
 import scheduler.TimeoutScheduler;
-import storage.PersistentRepository;
 import storage.StorageService;
-import storage.repositories.AofRepository;
-import storage.repositories.RdbRepository;
+import storage.persistence.AofRepository;
+import storage.persistence.PersistentRepository;
+import storage.persistence.RdbRepository;
 import transaction.TransactionManager;
 
 public final class ServerContext implements EventPublisher {

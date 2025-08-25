@@ -28,11 +28,21 @@ public final class ProtocolConstants {
     // Replication constants
     public static final String FULLRESYNC_PREFIX = "FULLRESYNC";
     public static final String CONTINUE_PREFIX = "CONTINUE";
-    public static final byte[] EMPTY_RDB_BYTES = {
-            'R', 'E', 'D', 'I', 'S', '0', '0', '1', '1', // magic + version
-            (byte) 0xFF, // EOF marker
-            0, 0, 0, 0, 0, 0, 0, 0 // checksum (8 bytes of zero)
-    };
+
+    /**
+     * Generates an empty RDB file content for replication purposes.
+     * Contains minimal RDB structure: header + version + EOF + checksum.
+     */
+    public static byte[] generateEmptyRdbBytes() {
+        return new byte[] {
+                'R', 'E', 'D', 'I', 'S', '0', '0', '1', '1', // magic + version (REDIS0011)
+                (byte) 0xFF, // EOF marker
+                0, 0, 0, 0, 0, 0, 0, 0 // checksum (8 bytes of zero)
+        };
+    }
+
+    // For backward compatibility - use generateEmptyRdbBytes() in new code
+    public static final byte[] EMPTY_RDB_BYTES = generateEmptyRdbBytes();
 
     // RDB opcodes
     public static final String RDB_FILE_HEADER = "REDIS0011";
@@ -48,6 +58,14 @@ public final class ProtocolConstants {
     public static final int RDB_STREAM_VALUE_INDICATOR = 0x03;
 
     // Data structure limits
+    /**
+     * Node capacity for QuickList implementation. 64 provides optimal balance
+     * between:
+     * - Memory efficiency (not too many small nodes)
+     * - Operation efficiency (quick traversal within nodes)
+     * - Cache locality (fits well in CPU cache lines)
+     * Based on Redis ziplist design principles.
+     */
     public static final int LIST_NODE_CAPACITY = 64;
     public static final int RDB_BUFFER_SIZE = 8192;
 }

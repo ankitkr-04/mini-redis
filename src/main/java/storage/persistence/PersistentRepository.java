@@ -1,4 +1,4 @@
-package storage;
+package storage.persistence;
 
 import java.io.File;
 import java.io.IOException;

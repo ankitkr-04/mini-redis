@@ -1,4 +1,4 @@
-package storage.repositories;
+package storage.persistence;
 
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
@@ -12,7 +12,6 @@ import java.util.Map;
 
 import collections.QuickList;
 import config.ProtocolConstants;
-import storage.PersistentRepository;
 import storage.expiry.ExpiryPolicy;
 import storage.types.ListValue;
 import storage.types.StoredValue;

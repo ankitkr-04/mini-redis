@@ -1,5 +1,8 @@
 module redis {
     requires org.slf4j;
+    requires micrometer.core;
+    requires micrometer.registry.prometheus;
+    requires io.prometheus.metrics.core;
 
     exports blocking;
     exports collections;
@@ -25,6 +28,7 @@ module redis {
     exports replication;
     exports storage;
     exports storage.expiry;
+    exports storage.persistence;
     exports storage.repositories;
     exports storage.types;
     exports storage.types.streams;

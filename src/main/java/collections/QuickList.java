@@ -222,6 +222,12 @@ public final class QuickList<T> implements Iterable<T> {
         return result;
     }
 
+    /**
+     * Returns the total number of elements in the list.
+     * Uses optimistic read lock for better performance - if validation fails,
+     * falls back to reading the volatile field directly.
+     * Thread-safe: This method is lock-free in the common case.
+     */
     public int length() {
         long stamp = lock.tryOptimisticRead();
         int size = totalSize;

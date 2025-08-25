@@ -45,7 +45,7 @@ public final class CommandDispatcher {
     public ByteBuffer dispatch(String[] rawArgs,
             SocketChannel clientChannel,
             boolean isPropagatedCommand) {
-        if (rawArgs == null || rawArgs.length == 0) {
+        if (!isValidCommandInput(rawArgs)) {
             return ResponseBuilder.error(ErrorCode.UNKNOWN_COMMAND.getMessage());
         }
 
@@ -53,25 +53,41 @@ public final class CommandDispatcher {
         Command command = registry.getCommand(commandName);
 
         if (command == null) {
-            return isPropagatedCommand
-                    ? null
-                    : ResponseBuilder.error(ErrorCode.UNKNOWN_COMMAND.format(commandName));
+            return handleUnknownCommand(commandName, isPropagatedCommand);
         }
 
         CommandContext cmdContext = new CommandContext(commandName, rawArgs, clientChannel, storage, context);
 
         if (!command.validate(cmdContext)) {
-            return isPropagatedCommand
-                    ? null
-                    : ResponseBuilder.error(ErrorCode.WRONG_ARG_COUNT.getMessage());
+            return handleValidationFailure(isPropagatedCommand);
         }
 
-        boolean inPubSub = pubSubManager.isInPubSubMode(clientChannel);
-        if (inPubSub && !isPubSubCommand(command)) {
+        if (!canExecuteInCurrentMode(clientChannel, command)) {
             return ResponseBuilder.error(ErrorCode.NOT_ALLOWED_IN_PUBSUB_MODE.format(commandName.toLowerCase()));
         }
 
         return executeCommand(command, cmdContext, clientChannel, isPropagatedCommand, rawArgs);
+    }
+
+    private boolean isValidCommandInput(String[] rawArgs) {
+        return rawArgs != null && rawArgs.length > 0;
+    }
+
+    private ByteBuffer handleUnknownCommand(String commandName, boolean isPropagatedCommand) {
+        return isPropagatedCommand
+                ? null
+                : ResponseBuilder.error(ErrorCode.UNKNOWN_COMMAND.format(commandName));
+    }
+
+    private ByteBuffer handleValidationFailure(boolean isPropagatedCommand) {
+        return isPropagatedCommand
+                ? null
+                : ResponseBuilder.error(ErrorCode.WRONG_ARG_COUNT.getMessage());
+    }
+
+    private boolean canExecuteInCurrentMode(SocketChannel clientChannel, Command command) {
+        boolean inPubSub = pubSubManager.isInPubSubMode(clientChannel);
+        return !inPubSub || isPubSubCommand(command);
     }
 
     private ByteBuffer executeCommand(Command command,
@@ -79,16 +95,30 @@ public final class CommandDispatcher {
             SocketChannel clientChannel,
             boolean isPropagatedCommand,
             String[] rawArgs) {
-        TransactionState transactionState = transactionManager.getOrCreateState(clientChannel);
 
-        if (shouldQueueInTransaction(transactionState, command)) {
-            transactionState.queueCommand(command, context);
+        if (shouldQueueForTransaction(clientChannel, command, context)) {
             return ResponseBuilder.encode(ProtocolConstants.RESP_QUEUED);
         }
 
         CommandResult result = command.execute(context);
 
-        // Log write commands to AOF if enabled and command succeeded
+        handleAofLogging(result, command, isPropagatedCommand, context, rawArgs);
+
+        boolean shouldSendResponse = !isPropagatedCommand || command.isReplicationCommand();
+        return shouldSendResponse ? buildResponse(result) : null;
+    }
+
+    private boolean shouldQueueForTransaction(SocketChannel clientChannel, Command command, CommandContext context) {
+        TransactionState transactionState = transactionManager.getOrCreateState(clientChannel);
+        if (shouldQueueInTransaction(transactionState, command)) {
+            transactionState.queueCommand(command, context);
+            return true;
+        }
+        return false;
+    }
+
+    private void handleAofLogging(CommandResult result, Command command, boolean isPropagatedCommand,
+            CommandContext context, String[] rawArgs) {
         if (result instanceof CommandResult.Success && shouldLogToAof(command, isPropagatedCommand) &&
                 context.getServerContext().isAofMode()) {
             var aofRepo = context.getServerContext().getAofRepository();
@@ -96,10 +126,6 @@ public final class CommandDispatcher {
                 aofRepo.appendCommand(rawArgs);
             }
         }
-
-        boolean shouldSendResponse = !isPropagatedCommand || command.isReplicationCommand();
-
-        return shouldSendResponse ? buildResponse(result) : null;
     }
 
     private boolean shouldQueueInTransaction(TransactionState state, Command command) {
