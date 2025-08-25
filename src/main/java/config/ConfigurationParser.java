@@ -8,7 +8,7 @@ import java.util.Set;
 public final class ConfigurationParser {
     private static final Set<String> VALID_OPTIONS = Set.of(
             "port", "replicaof", "repl-backlog-size", "dir", "dbfilename",
-            "appendonly", "maxmemory", "bind", "requirepass");
+            "appendonly", "maxmemory", "bind", "requirepass", "http-enabled", "http-port");
 
     public static ParseResult parse(String[] args) {
         Map<String, String> options = new HashMap<>();

@@ -19,6 +19,7 @@ import replication.ReplicationClient;
 import replication.ReplicationManager;
 import replication.ReplicationState;
 import scheduler.TimeoutScheduler;
+import server.http.HttpServerManager;
 import storage.StorageService;
 import storage.persistence.AofRepository;
 import storage.persistence.PersistentRepository;
@@ -43,6 +44,7 @@ public final class ServerContext implements EventPublisher {
     private final PubSubManager pubSubManager;
     private final MetricsCollector metricsCollector;
     private final MetricsHandler metricsHandler;
+    private final HttpServerManager httpServerManager;
 
     public ServerContext(ServerConfiguration config) {
         this.config = config;
@@ -85,8 +87,14 @@ public final class ServerContext implements EventPublisher {
                 ? new ReplicationClient(config.getMasterInfo(), replicationState, config.port(), this)
                 : null;
 
-        log.info("ServerContext initialized - Port: {}, Role: {}",
-                config.port(), replicationState.getRole());
+        // Initialize HTTP server if enabled
+        this.httpServerManager = config.httpServerEnabled()
+                ? new HttpServerManager(this, config.bindAddress(), config.httpPort())
+                : null;
+
+        log.info("ServerContext initialized - Port: {}, Role: {}, HTTP: {}",
+                config.port(), replicationState.getRole(),
+                config.httpServerEnabled() ? "enabled on " + config.httpPort() : "disabled");
     }
 
     public void start(Selector selector) {
@@ -119,10 +127,24 @@ public final class ServerContext implements EventPublisher {
                 log.error("Failed to start replication client", e);
             }
         }
+
+        // Start HTTP server if enabled
+        if (httpServerManager != null) {
+            try {
+                httpServerManager.start();
+            } catch (IOException e) {
+                log.error("Failed to start HTTP server", e);
+            }
+        }
     }
 
     public void shutdown() {
         log.info("Shutting down server context");
+
+        // Stop HTTP server
+        if (httpServerManager != null) {
+            httpServerManager.stop();
+        }
 
         timeoutScheduler.shutdown();
         if (replicationClient != null) {
@@ -218,6 +240,10 @@ public final class ServerContext implements EventPublisher {
         return replicationManager;
     }
 
+    public HttpServerManager getHttpServerManager() {
+        return httpServerManager;
+    }
+
     // EventPublisher implementation
     @Override
     public void publishDataAdded(String key) {
@@ -233,12 +259,12 @@ public final class ServerContext implements EventPublisher {
     public void publishKeyModified(String key) {
         transactionManager.invalidateWatchingClients(key);
     }
-    
+
     // Metrics getters
     public MetricsCollector getMetricsCollector() {
         return metricsCollector;
     }
-    
+
     public MetricsHandler getMetricsHandler() {
         return metricsHandler;
     }

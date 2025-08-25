@@ -15,7 +15,9 @@ public record ServerConfiguration(
         boolean appendOnlyMode,
         long maxMemory,
         String bindAddress,
-        Optional<String> requirePassword) {
+        Optional<String> requirePassword,
+        boolean httpServerEnabled,
+        int httpPort) {
 
     // Default values
     private static final int DEFAULT_PORT = 6379;
@@ -24,6 +26,8 @@ public record ServerConfiguration(
     private static final String DEFAULT_DB_FILENAME = "dump.rdb";
     private static final long DEFAULT_MAX_MEMORY = 100 * 1024 * 1024; // 100MB
     private static final String DEFAULT_BIND_ADDRESS = "127.0.0.1";
+    private static final boolean DEFAULT_HTTP_ENABLED = true;
+    private static final int DEFAULT_HTTP_PORT = 8080;
 
     public static ServerConfiguration from(Map<String, String> options) {
         return new ServerConfiguration(
@@ -35,7 +39,9 @@ public record ServerConfiguration(
                 ConfigurationParser.getBooleanOption(options, "appendonly", false),
                 ConfigurationParser.getLongOption(options, "maxmemory", DEFAULT_MAX_MEMORY),
                 ConfigurationParser.getStringOption(options, "bind", DEFAULT_BIND_ADDRESS),
-                Optional.ofNullable(options.get("requirepass")));
+                Optional.ofNullable(options.get("requirepass")),
+                ConfigurationParser.getBooleanOption(options, "http-enabled", DEFAULT_HTTP_ENABLED),
+                ConfigurationParser.getIntOption(options, "http-port", DEFAULT_HTTP_PORT));
     }
 
     public boolean isReplicaMode() {

@@ -3,6 +3,7 @@ module redis {
     requires micrometer.core;
     requires micrometer.registry.prometheus;
     requires io.prometheus.metrics.core;
+    requires transitive jdk.httpserver;
 
     exports blocking;
     exports collections;
@@ -25,6 +26,7 @@ module redis {
     exports protocol;
     exports pubsub;
     exports server;
+    exports server.http;
     exports replication;
     exports storage;
     exports storage.expiry;
