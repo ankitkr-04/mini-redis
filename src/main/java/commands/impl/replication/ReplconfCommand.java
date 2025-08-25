@@ -53,8 +53,13 @@ public class ReplconfCommand extends ReplicationCommand {
             ReplconfHandler handler = handlers.getOrDefault(key, ReplconfHandler.unknown());
             CommandResult result = handler.handle(key, value, context);
 
-            if (result != null && result.isError()) {
-                return result;
+            if (result != null) {
+                if (result.isError()) {
+                    return result;
+                } else {
+                    // Return successful response from handler (e.g., GETACK response)
+                    return result;
+                }
             }
         }
 

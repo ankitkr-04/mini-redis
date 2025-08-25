@@ -99,14 +99,27 @@ public final class ReplicationClient {
         }
 
         public void handleIncomingData(ByteBuffer buffer) throws IOException {
-            switch (state) {
-                case PING_SENT -> handlePingResponse(buffer);
-                case REPLCONF_PORT_SENT -> handleReplconfPortResponse(buffer);
-                case REPLCONF_CAPA_SENT -> handleReplconfCapaResponse(buffer);
-                case PSYNC_SENT -> handlePsyncResponse(buffer);
-                case RDB_RECEIVING -> handleRdbData(buffer);
-                case ACTIVE -> handleActiveReplication(buffer);
-                default -> log.warn("Unexpected state: {}", state);
+            log.info("HandshakeManager: current state = {}, buffer has {} bytes", state, buffer.remaining());
+
+            // Process data based on current state, potentially multiple times if state
+            // changes
+            while (buffer.hasRemaining()) {
+                int initialPosition = buffer.position();
+
+                switch (state) {
+                    case PING_SENT -> handlePingResponse(buffer);
+                    case REPLCONF_PORT_SENT -> handleReplconfPortResponse(buffer);
+                    case REPLCONF_CAPA_SENT -> handleReplconfCapaResponse(buffer);
+                    case PSYNC_SENT -> handlePsyncResponse(buffer);
+                    case RDB_RECEIVING -> handleRdbData(buffer);
+                    case ACTIVE -> handleActiveReplication(buffer);
+                    default -> log.warn("Unexpected state: {}", state);
+                }
+
+                // If no data was consumed, break to avoid infinite loop
+                if (buffer.position() == initialPosition) {
+                    break;
+                }
             }
         }
 
@@ -151,9 +164,12 @@ public final class ReplicationClient {
 
         private void handlePsyncResponse(ByteBuffer buffer) throws IOException {
             String response = ProtocolParser.parseSimpleString(buffer);
-            if (response == null)
+            if (response == null) {
+                log.debug("PSYNC response not complete yet, waiting for more data");
                 return;
+            }
 
+            log.info("Received PSYNC response: {}", response);
             String[] parts = response.split(" ");
             if (parts.length != 3 || !"FULLRESYNC".equals(parts[0])) {
                 throw new IOException("Unexpected PSYNC response: " + response);
@@ -164,22 +180,26 @@ public final class ReplicationClient {
             replicationState.setMasterReplicationId(masterId);
             replicationState.incrementReplicationOffset(offset - replicationState.getMasterReplicationOffset());
             log.info("Full resync initiated with ID {} offset {}", masterId, offset);
+            log.info("Transitioning to RDB_RECEIVING state, buffer has {} bytes remaining", buffer.remaining());
             state = ReplicationProtocol.HandshakeState.RDB_RECEIVING;
         }
 
         private void handleRdbData(ByteBuffer buffer) {
             if (expectedRdbSize == -1) {
                 if (!buffer.hasRemaining() || buffer.get() != (byte) '$') {
-                    log.error("Invalid RDB header");
+                    log.error("Invalid RDB header - no $ marker");
                     return;
                 }
 
                 Long size = parseNumber(buffer);
-                if (size == null)
+                if (size == null) {
+                    log.debug("Could not parse RDB size yet, waiting for more data");
                     return;
+                }
 
                 expectedRdbSize = size.intValue();
                 rdbBuffer = ByteBuffer.allocate(expectedRdbSize);
+                log.info("Expecting RDB file of {} bytes", expectedRdbSize);
             }
 
             int remaining = Math.min(expectedRdbSize - rdbBuffer.position(), buffer.remaining());
@@ -187,15 +207,17 @@ public final class ReplicationClient {
                 byte[] data = new byte[remaining];
                 buffer.get(data);
                 rdbBuffer.put(data);
+                log.debug("Read {} bytes of RDB data, total: {}/{}", remaining, rdbBuffer.position(), expectedRdbSize);
             }
 
             if (rdbBuffer.position() == expectedRdbSize) {
-                log.info("RDB file received completely ({} bytes), handshake complete", expectedRdbSize);
+                log.info("RDB file received completely ({} bytes), transitioning to ACTIVE state", expectedRdbSize);
                 state = ReplicationProtocol.HandshakeState.ACTIVE;
                 replicationState.setHandshakeStatus(ReplicationState.HandshakeStatus.COMPLETED);
 
                 // Process any remaining data in the buffer as active replication commands
                 if (buffer.hasRemaining()) {
+                    log.info("Processing remaining {} bytes as active replication commands", buffer.remaining());
                     handleActiveReplication(buffer);
                 }
             }
@@ -204,13 +226,19 @@ public final class ReplicationClient {
         private void handleActiveReplication(ByteBuffer buffer) {
             List<String[]> commands = ProtocolParser.parseRespArrays(buffer);
             for (String[] command : commands) {
+                log.info("Processing replication command: {}", String.join(" ", command));
                 ByteBuffer response = context.getCommandDispatcher().dispatch(command, null, true);
                 if (response != null) {
+                    log.info("Got response for command {}, sending {} bytes to master", command[0],
+                            response.remaining());
                     try {
                         ReplicationProtocol.sendResponse(masterChannel, response);
+                        log.info("Successfully sent response to master");
                     } catch (IOException e) {
                         log.error("Failed to send response to master", e);
                     }
+                } else {
+                    log.info("No response generated for command {}", command[0]);
                 }
                 replicationState.incrementReplicationOffset(ReplicationProtocol.calculateCommandSize(command));
             }
