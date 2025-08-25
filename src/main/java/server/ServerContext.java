@@ -7,7 +7,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import blocking.BlockingManager;
-import blocking.TimeoutScheduler;
 import commands.registry.CommandFactory;
 import commands.registry.CommandRegistry;
 import events.EventPublisher;
@@ -15,6 +14,7 @@ import protocol.CommandDispatcher;
 import replication.ReplicationClient;
 import replication.ReplicationManager;
 import replication.ReplicationState;
+import scheduler.TimeoutScheduler;
 import storage.StorageService;
 import transaction.TransactionManager;
 
@@ -48,7 +48,7 @@ public final class ServerContext implements EventPublisher {
         this.replicationManager = new ReplicationManager(replicationState);
         this.commandRegistry = CommandFactory.createRegistry(this);
         this.commandDispatcher = new CommandDispatcher(commandRegistry, storageService, transactionManager, this);
-        this.timeoutScheduler = new TimeoutScheduler(blockingManager);
+        this.timeoutScheduler = new TimeoutScheduler();
 
         this.replicationClient = config.isReplicaMode()
                 ? new ReplicationClient(config.getMasterInfo(), replicationState, config.port(), this)
@@ -60,6 +60,7 @@ public final class ServerContext implements EventPublisher {
 
     public void start(Selector selector) {
         timeoutScheduler.start();
+        blockingManager.start(timeoutScheduler);
 
         if (replicationClient != null) {
             try {
@@ -121,6 +122,10 @@ public final class ServerContext implements EventPublisher {
 
     public ReplicationClient getReplicationClient() {
         return replicationClient;
+    }
+
+    public TimeoutScheduler getTimeoutScheduler() {
+        return timeoutScheduler;
     }
 
     public ReplicationManager getReplicationManager() {

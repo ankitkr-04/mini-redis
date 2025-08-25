@@ -16,6 +16,11 @@ public final class TransactionManager {
         return clientStates.computeIfAbsent(client, _ -> new TransactionState());
     }
 
+    public boolean isInTransaction(SocketChannel client) {
+        TransactionState state = clientStates.get(client);
+        return state != null && state.isInTransaction();
+    }
+
     public void clearState(SocketChannel client) {
         clientStates.remove(client);
     }

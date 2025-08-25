@@ -24,6 +24,7 @@ module redis {
     exports storage.repositories;
     exports storage.types;
     exports storage.types.streams;
+    exports scheduler;
     exports transaction;
     exports commands.validation;
     exports config;

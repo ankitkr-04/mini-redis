@@ -77,10 +77,9 @@ class AckHandler implements ReplconfHandler {
         long offset = Long.parseLong(value);
         log.trace("Replica ACK offset: {}", offset);
 
-        context.getServerContext().getReplicationManager().updateReplicaOffset(context.getClientChannel(), offset);
-        long currentOffset = context.getServerContext().getReplicationState().getMasterReplicationOffset();
+        context.getServerContext().getReplicationManager().checkPendingWaits();
+        return null; // Success
 
-        return CommandResult.success(ResponseBuilder.integer(currentOffset));
     }
 }
 
@@ -91,10 +90,8 @@ class GetAckHandler implements ReplconfHandler {
     public CommandResult handle(String key, String value, CommandContext context) {
         if ("*".equals(value)) {
             long currentOffset = context.getServerContext().getReplicationState().getMasterReplicationOffset();
-            log.info("GETACK handler: returning offset {}", currentOffset);
             ByteBuffer response = ResponseBuilder.array(
                     List.of("REPLCONF", "ACK", String.valueOf(currentOffset)));
-            log.info("GETACK handler: created response buffer with {} bytes", response.remaining());
             return CommandResult.success(response);
         }
 

@@ -4,13 +4,21 @@ import java.io.IOException;
 import java.nio.channels.SocketChannel;
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicLong;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import protocol.ResponseBuilder;
+
 public final class ReplicationManager {
     private static final Logger log = LoggerFactory.getLogger(ReplicationManager.class);
+
+    private static record PendingWait(SocketChannel channel, int targetReplicas, long targetOffset, long endTime) {
+    }
+
+    private final List<PendingWait> pendingWaits = new CopyOnWriteArrayList<>();
 
     private final ConcurrentHashMap<SocketChannel, AtomicLong> replicaOffsets = new ConcurrentHashMap<>();
     private final ReplicationState replicationState;
@@ -68,4 +76,64 @@ public final class ReplicationManager {
             return "unknown";
         }
     }
+
+    // Wait for replication to specified number of replicas at given offset or
+    // timeout
+    public int getSyncReplicasCount(long targetOffset) {
+        return (int) replicaOffsets.values().stream()
+                .filter(offset -> offset.get() >= targetOffset)
+                .count();
+    }
+
+    public void sendGetAckToAllReplicas() {
+        String[] command = new String[] { "REPLCONF", "GETACK", "*" };
+        replicaOffsets.keySet().forEach(channel -> {
+            try {
+                ReplicationProtocol.sendCommand(channel, command);
+            } catch (IOException e) {
+                log.warn("Failed to send GETACK to replica {}: {}", getChannelInfo(channel), e.getMessage());
+            }
+        });
+    }
+
+    public void addPendingWait(SocketChannel channel, int targetReplicas, long targetOffset, long timeoutMillis) {
+        long endTime = System.currentTimeMillis() + timeoutMillis;
+        pendingWaits.add(new PendingWait(channel, targetReplicas, targetOffset, endTime));
+    }
+
+    public void reemovePendingWait(SocketChannel client) {
+        pendingWaits.removeIf(pw -> pw.channel == client);
+    }
+
+    public void checkPendingWaits() {
+        long now = System.currentTimeMillis();
+        var it = pendingWaits.iterator();
+        while (it.hasNext()) {
+            PendingWait pw = it.next();
+            if (now >= pw.endTime) {
+                log.info("Pending wait timed out for channel: {}", getChannelInfo(pw.channel));
+                sendCurrentCount(pw.channel, pw.targetReplicas, pw.targetOffset);
+                it.remove();
+                continue;
+            }
+
+            int syncedReplicas = getSyncReplicasCount(pw.targetOffset);
+            if (syncedReplicas >= pw.targetReplicas) {
+                log.info("Pending wait satisfied for channel: {}, synced replicas: {}",
+                        getChannelInfo(pw.channel), syncedReplicas);
+                sendCurrentCount(pw.channel, pw.targetReplicas, pw.targetOffset);
+                it.remove();
+            }
+        }
+    }
+
+    public void sendCurrentCount(SocketChannel channel, int targetReplicas, long targetOffset) {
+        int syncedReplicas = getSyncReplicasCount(targetOffset);
+        try {
+            ReplicationProtocol.sendResponse(channel, ResponseBuilder.integer(syncedReplicas));
+        } catch (IOException e) {
+            log.warn("Failed to send current count to channel {}: {}", getChannelInfo(channel), e.getMessage());
+        }
+    }
+
 }

@@ -11,6 +11,7 @@ import commands.impl.lists.PushCommand;
 import commands.impl.lists.RangeCommand;
 import commands.impl.replication.PsyncCommand;
 import commands.impl.replication.ReplconfCommand;
+import commands.impl.replication.WaitCommand;
 import commands.impl.streams.AddStreamCommand;
 import commands.impl.streams.RangeStreamCommand;
 import commands.impl.streams.ReadStreamCommand;
@@ -58,6 +59,7 @@ public final class CommandFactory {
         // Replication commands
         registry.register(new PsyncCommand());
         registry.register(new ReplconfCommand());
+        registry.register(new WaitCommand());
 
         return registry;
     }

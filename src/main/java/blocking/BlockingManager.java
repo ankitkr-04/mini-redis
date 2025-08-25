@@ -9,8 +9,10 @@ import java.util.Queue;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
 
+import config.ServerConfig;
 import events.EventListener;
 import protocol.ResponseBuilder;
+import scheduler.TimeoutScheduler;
 import storage.StorageService;
 
 public final class BlockingManager implements EventListener {
@@ -20,6 +22,10 @@ public final class BlockingManager implements EventListener {
 
     public BlockingManager(StorageService storage) {
         this.storage = storage;
+    }
+
+    public void start(TimeoutScheduler scheduler) {
+        scheduler.schedule(ServerConfig.CLEANUP_INTERVAL_MS, this::removeExpiredClients);
     }
 
     public void blockClientForLists(List<String> keys, SocketChannel client,
