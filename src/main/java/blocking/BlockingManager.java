@@ -9,6 +9,7 @@ import java.util.Queue;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
 
+import config.ProtocolConstants;
 import config.ServerConfig;
 import events.EventListener;
 import protocol.ResponseBuilder;
@@ -19,13 +20,24 @@ public final class BlockingManager implements EventListener {
     private final Map<String, Queue<BlockedClient>> waitingClients = new ConcurrentHashMap<>();
     private final Map<BlockedClient, BlockingContext> clientContexts = new ConcurrentHashMap<>();
     private final StorageService storage;
+    private TimeoutScheduler scheduler;
 
     public BlockingManager(StorageService storage) {
         this.storage = storage;
     }
 
     public void start(TimeoutScheduler scheduler) {
-        scheduler.schedule(ServerConfig.CLEANUP_INTERVAL_MS, this::removeExpiredClients);
+        this.scheduler = scheduler;
+        scheduleNextCleanup();
+    }
+
+    private void scheduleNextCleanup() {
+        if (scheduler != null) {
+            scheduler.schedule(ServerConfig.CLEANUP_INTERVAL_MS, () -> {
+                removeExpiredClients();
+                scheduleNextCleanup(); // Schedule the next cleanup
+            });
+        }
     }
 
     public void blockClientForLists(List<String> keys, SocketChannel client,
@@ -62,6 +74,11 @@ public final class BlockingManager implements EventListener {
     }
 
     private boolean processClient(BlockedClient client, String key) {
+        if (!client.channel().isOpen()) {
+            cleanupClient(client);
+            return true;
+        }
+
         if (client.isExpired()) {
             sendTimeoutResponse(client);
             cleanupClient(client);
@@ -85,7 +102,7 @@ public final class BlockingManager implements EventListener {
         waitingClients.entrySet().removeIf(entry -> {
             Queue<BlockedClient> queue = entry.getValue();
             queue.removeIf(client -> {
-                if (client.isExpired()) {
+                if (!client.channel().isOpen() || client.isExpired()) {
                     sendTimeoutResponse(client);
                     cleanupClient(client);
                     return true;
@@ -97,6 +114,7 @@ public final class BlockingManager implements EventListener {
     }
 
     public void clear() {
+        waitingClients.values().forEach(queue -> queue.forEach(this::sendTimeoutResponse));
         waitingClients.clear();
         clientContexts.clear();
     }
@@ -111,14 +129,19 @@ public final class BlockingManager implements EventListener {
     }
 
     private void sendTimeoutResponse(BlockedClient client) {
-        writeResponse(client.channel(), ResponseBuilder.bulkString(null));
+        writeResponse(client.channel(), ResponseBuilder.encode(ProtocolConstants.RESP_NULL_ARRAY));
     }
 
     private void writeResponse(SocketChannel channel, ByteBuffer response) {
         try {
-            while (response.hasRemaining())
-                channel.write(response);
-        } catch (Exception ignored) {
+            if (channel.isOpen()) {
+                while (response.hasRemaining()) {
+                    channel.write(response);
+                }
+            }
+        } catch (Exception e) {
+            // Log error but don't throw to ensure cleanup continues
+            System.err.println("Error writing response to client: " + e.getMessage());
         }
     }
 

@@ -22,6 +22,7 @@ public final class ProtocolConstants {
     public static final String RESP_PONG = "+PONG\r\n";
     public static final String RESP_QUEUED = "+QUEUED\r\n";
     public static final String RESP_NULL_BULK_STRING = "$-1\r\n";
+    public static final String RESP_NULL_ARRAY = "*-1\r\n";
     public static final String RESP_EMPTY_ARRAY = "*0\r\n";
 
     // Replication constants
