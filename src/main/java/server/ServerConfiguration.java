@@ -45,4 +45,20 @@ public record ServerConfiguration(
     public MasterInfo getMasterInfo() {
         return masterInfo.orElseThrow(() -> new IllegalStateException("Not in replica mode"));
     }
+
+    public Optional<String> getConfigParameter(String parameter) {
+        return switch (parameter.toLowerCase()) {
+            case "port" -> Optional.of(String.valueOf(port));
+            case "repl-backlog-size" -> Optional.of(String.valueOf(replicationBacklogSize));
+            case "dir" -> Optional.of(dataDirectory);
+            case "dbfilename" -> Optional.of(databaseFilename);
+            case "appendonly" -> Optional.of(appendOnlyMode ? "yes" : "no");
+            case "maxmemory" -> Optional.of(String.valueOf(maxMemory));
+            case "bind" -> Optional.of(bindAddress);
+            case "requirepass" -> Optional.of(requirePassword.orElse(""));
+            case "master_host" -> Optional.of(isReplicaMode() ? getMasterInfo().host() : "");
+            case "master_port" -> Optional.of(isReplicaMode() ? String.valueOf(getMasterInfo().port()) : "0");
+            default -> Optional.empty();
+        };
+    }
 }

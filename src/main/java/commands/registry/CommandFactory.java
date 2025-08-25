@@ -1,9 +1,10 @@
 package commands.registry;
 
 import commands.impl.basic.EchoCommand;
-import commands.impl.basic.InfoCommand;
 import commands.impl.basic.PingCommand;
 import commands.impl.basic.TypeCommand;
+import commands.impl.config.ConfigCommand;
+import commands.impl.config.InfoCommand;
 import commands.impl.lists.BlockingPopCommand;
 import commands.impl.lists.LengthCommand;
 import commands.impl.lists.PopCommand;
@@ -32,7 +33,10 @@ public final class CommandFactory {
         registry.register(new PingCommand());
         registry.register(new EchoCommand());
         registry.register(new TypeCommand());
+
+        // Configuration commands
         registry.register(new InfoCommand());
+        registry.register(new ConfigCommand());
 
         // String commands
         registry.register(new GetCommand());

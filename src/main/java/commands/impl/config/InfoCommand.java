@@ -1,4 +1,4 @@
-package commands.impl.basic;
+package commands.impl.config;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
