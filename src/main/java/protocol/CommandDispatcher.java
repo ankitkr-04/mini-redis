@@ -68,7 +68,7 @@ public final class CommandDispatcher {
 
         boolean inPubSub = pubSubManager.isInPubSubMode(clientChannel);
         if (inPubSub && !isPubSubCommand(command)) {
-            return ResponseBuilder.error(ErrorCode.NOT_ALLOWED_IN_PUBSUB_MODE.getMessage());
+            return ResponseBuilder.error(ErrorCode.NOT_ALLOWED_IN_PUBSUB_MODE.format(commandName.toLowerCase()));
         }
 
         return executeCommand(command, cmdContext, clientChannel, isPropagatedCommand);

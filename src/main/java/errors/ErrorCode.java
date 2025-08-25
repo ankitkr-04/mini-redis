@@ -52,7 +52,8 @@ public enum ErrorCode {
                         "Not subscribed to the specified channel"),
         PUBSUB_ALREADY_SUBSCRIBED(
                         "Already subscribed to the specified channel"),
-        NOT_ALLOWED_IN_PUBSUB_MODE("only (P)SUBSCRIBE / (P)UNSUBSCRIBE / PING allowed in this context");
+        NOT_ALLOWED_IN_PUBSUB_MODE(
+                        "Can't execute '%s': only (P|S)SUBSCRIBE / (P|S)UNSUBSCRIBE / PING / QUIT / RESET are allowed in this context");
 
         private final String messageTemplate;
 
