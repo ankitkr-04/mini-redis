@@ -22,6 +22,10 @@ public interface Command {
         return false;
     }
 
+    default boolean isPubSubCommand() {
+        return false;
+    }
+
     default boolean isBlockingCommand() {
         return false;
     }

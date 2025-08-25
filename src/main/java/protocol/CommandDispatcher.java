@@ -5,6 +5,7 @@ import java.nio.channels.SocketChannel;
 
 import commands.context.CommandContext;
 import commands.core.Command;
+import commands.impl.basic.PingCommand;
 import commands.impl.transaction.DiscardCommand;
 import commands.impl.transaction.ExecCommand;
 import commands.impl.transaction.MultiCommand;
@@ -12,6 +13,7 @@ import commands.registry.CommandRegistry;
 import commands.result.CommandResult;
 import config.ProtocolConstants;
 import errors.ErrorCode;
+import pubsub.PubSubManager;
 import server.ServerContext;
 import storage.StorageService;
 import transaction.TransactionManager;
@@ -21,14 +23,17 @@ public final class CommandDispatcher {
     private final CommandRegistry registry;
     private final StorageService storage;
     private final TransactionManager transactionManager;
+    private final PubSubManager pubSubManager;
     private final ServerContext context;
 
     public CommandDispatcher(CommandRegistry registry,
             StorageService storage,
             TransactionManager transactionManager,
+            PubSubManager pubSubManager,
             ServerContext context) {
         this.registry = registry;
         this.storage = storage;
+        this.pubSubManager = pubSubManager;
         this.transactionManager = transactionManager;
         this.context = context;
     }
@@ -61,6 +66,11 @@ public final class CommandDispatcher {
                     : ResponseBuilder.error(ErrorCode.WRONG_ARG_COUNT.getMessage());
         }
 
+        boolean inPubSub = pubSubManager.isInPubSubMode(clientChannel);
+        if (inPubSub && !isPubSubCommand(command)) {
+            return ResponseBuilder.error(ErrorCode.NOT_ALLOWED_IN_PUBSUB_MODE.getMessage());
+        }
+
         return executeCommand(command, cmdContext, clientChannel, isPropagatedCommand);
     }
 
@@ -89,6 +99,10 @@ public final class CommandDispatcher {
         return command instanceof MultiCommand ||
                 command instanceof ExecCommand ||
                 command instanceof DiscardCommand;
+    }
+
+    private boolean isPubSubCommand(Command command) {
+        return command.isPubSubCommand() || command instanceof PingCommand;
     }
 
     private ByteBuffer buildResponse(CommandResult result) {

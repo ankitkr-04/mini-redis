@@ -11,6 +11,8 @@ import commands.impl.lists.LengthCommand;
 import commands.impl.lists.PopCommand;
 import commands.impl.lists.PushCommand;
 import commands.impl.lists.RangeCommand;
+import commands.impl.pubsub.SubscribeCommand;
+import commands.impl.pubsub.UnsubscribeCommand;
 import commands.impl.replication.PsyncCommand;
 import commands.impl.replication.ReplconfCommand;
 import commands.impl.replication.WaitCommand;
@@ -68,6 +70,10 @@ public final class CommandFactory {
         registry.register(new PsyncCommand());
         registry.register(new ReplconfCommand());
         registry.register(new WaitCommand());
+
+        // PubSubCommand
+        registry.register(new SubscribeCommand(), "SUBSCRIBE", "PSUBSCRIBE");
+        registry.register(new UnsubscribeCommand(), "UNSUBSCRIBE", "PUNSUBSCRIBE");
 
         return registry;
     }

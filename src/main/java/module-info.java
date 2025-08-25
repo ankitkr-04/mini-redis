@@ -15,9 +15,11 @@ module redis {
     exports commands.impl.streams;
     exports commands.impl.strings;
     exports commands.impl.transaction;
+    exports commands.impl.pubsub;
     exports events;
     exports errors;
     exports protocol;
+    exports pubsub;
     exports server;
     exports replication;
     exports storage;

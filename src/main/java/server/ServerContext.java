@@ -12,6 +12,7 @@ import commands.registry.CommandFactory;
 import commands.registry.CommandRegistry;
 import events.EventPublisher;
 import protocol.CommandDispatcher;
+import pubsub.PubSubManager;
 import replication.ReplicationClient;
 import replication.ReplicationManager;
 import replication.ReplicationState;
@@ -37,6 +38,7 @@ public final class ServerContext implements EventPublisher {
     private final ReplicationManager replicationManager;
     private final PersistentRepository persistentRepository;
     private final File rdbFile;
+    private final PubSubManager pubSubManager;
 
     public ServerContext(ServerConfiguration config) {
         this.config = config;
@@ -48,6 +50,7 @@ public final class ServerContext implements EventPublisher {
                 : new RdbRepository(storageService.getStore());
         this.blockingManager = new BlockingManager(storageService);
         this.transactionManager = new TransactionManager();
+        this.pubSubManager = new PubSubManager();
 
         // Initialize replication
         this.replicationState = new ReplicationState(
@@ -58,7 +61,8 @@ public final class ServerContext implements EventPublisher {
 
         this.replicationManager = new ReplicationManager(replicationState);
         this.commandRegistry = CommandFactory.createRegistry(this);
-        this.commandDispatcher = new CommandDispatcher(commandRegistry, storageService, transactionManager, this);
+        this.commandDispatcher = new CommandDispatcher(commandRegistry, storageService, transactionManager,
+                pubSubManager, this);
         this.timeoutScheduler = new TimeoutScheduler();
 
         this.replicationClient = config.isReplicaMode()
@@ -72,12 +76,12 @@ public final class ServerContext implements EventPublisher {
     public void start(Selector selector) {
         timeoutScheduler.start();
         blockingManager.start(timeoutScheduler);
-       try{
-         persistentRepository.loadSnapshot(rdbFile);
-         log.info("RDB snapshot loaded from {}", rdbFile.getAbsolutePath());
-       } catch (Exception e) {
-         log.error("Failed to load RDB snapshot", e);   
-         }
+        try {
+            persistentRepository.loadSnapshot(rdbFile);
+            log.info("RDB snapshot loaded from {}", rdbFile.getAbsolutePath());
+        } catch (Exception e) {
+            log.error("Failed to load RDB snapshot", e);
+        }
 
         if (replicationClient != null) {
             try {
@@ -121,6 +125,10 @@ public final class ServerContext implements EventPublisher {
     // Getters
     public ServerConfiguration getConfig() {
         return config;
+    }
+
+    public PubSubManager getPubSubManager() {
+        return pubSubManager;
     }
 
     public PersistentRepository getPersistentRepository() {

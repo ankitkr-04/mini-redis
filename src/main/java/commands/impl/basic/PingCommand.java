@@ -1,5 +1,7 @@
 package commands.impl.basic;
 
+import java.util.List;
+
 import commands.base.ReadCommand;
 import commands.context.CommandContext;
 import commands.result.CommandResult;
@@ -16,11 +18,26 @@ public final class PingCommand extends ReadCommand {
 
     @Override
     protected ValidationResult performValidation(CommandContext context) {
-        return CommandValidator.validateArgCount(context, 1);
+        return CommandValidator.validateArgRange(context, 1, 2);
     }
 
     @Override
     protected CommandResult executeInternal(CommandContext context) {
-        return CommandResult.success(ResponseBuilder.encode(ProtocolConstants.RESP_PONG));
+        boolean isInPubSubMode = context.getServerContext().getPubSubManager()
+                .isInPubSubMode(context.getClientChannel());
+
+        String response;
+        if (context.getArgs().length == 1) {
+            response = ProtocolConstants.PONG_RESPONSE; // "PONG"
+        } else {
+            response = context.getArgs()[1]; // echo back message
+        }
+
+        var toSend = isInPubSubMode
+                ? ResponseBuilder.array(List.of(ProtocolConstants.PONG_RESPONSE, response))
+                : ResponseBuilder.encode(response);
+
+        return CommandResult.success(toSend);
     }
+
 }

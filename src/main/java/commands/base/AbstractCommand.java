@@ -34,4 +34,5 @@ public abstract class AbstractCommand implements Command {
     protected abstract ValidationResult performValidation(CommandContext context);
 
     protected abstract CommandResult executeInternal(CommandContext context);
+
 }
