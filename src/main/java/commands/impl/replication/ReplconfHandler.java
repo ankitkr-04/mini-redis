@@ -49,7 +49,7 @@ class ListeningPortHandler implements ReplconfHandler {
         }
 
         log.debug("Replica listening on port: {}", value);
-        return null; // Success
+        return CommandResult.async(); // Success
     }
 }
 
@@ -59,7 +59,7 @@ class CapabilityHandler implements ReplconfHandler {
     @Override
     public CommandResult handle(String key, String value, CommandContext context) {
         log.debug("Replica capability: {}", value);
-        return null; // Success
+        return CommandResult.async();// Success
     }
 }
 
@@ -77,8 +77,13 @@ class AckHandler implements ReplconfHandler {
         long offset = Long.parseLong(value);
         log.trace("Replica ACK offset: {}", offset);
 
+        // Update the replica offset for this client
+        context.getServerContext().getReplicationManager().updateReplicaOffset(context.getClientChannel(), offset);
+
         context.getServerContext().getReplicationManager().checkPendingWaits();
-        return null; // Success
+
+        // ACK commands should not send any response back to the replica
+        return CommandResult.async();
 
     }
 }
@@ -96,7 +101,7 @@ class GetAckHandler implements ReplconfHandler {
         }
 
         log.debug("Unknown getack value: {}", value);
-        return null; // Continue
+        return CommandResult.async(); // Continue
     }
 }
 
@@ -106,6 +111,6 @@ class UnknownHandler implements ReplconfHandler {
     @Override
     public CommandResult handle(String key, String value, CommandContext context) {
         log.debug("Unknown REPLCONF parameter: {} = {}", key, value);
-        return null; // Continue
+        return CommandResult.async(); // Continue
     }
 }

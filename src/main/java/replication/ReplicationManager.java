@@ -2,6 +2,8 @@ package replication;
 
 import java.io.IOException;
 import java.nio.channels.SocketChannel;
+import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -106,14 +108,14 @@ public final class ReplicationManager {
     }
 
     public void checkPendingWaits() {
-        long now = System.currentTimeMillis();
-        var it = pendingWaits.iterator();
-        while (it.hasNext()) {
-            PendingWait pw = it.next();
+        long now = Instant.now().toEpochMilli();
+        List<PendingWait> toRemove = new ArrayList<>();
+
+        for (PendingWait pw : pendingWaits) {
             if (now >= pw.endTime) {
                 log.info("Pending wait timed out for channel: {}", getChannelInfo(pw.channel));
                 sendCurrentCount(pw.channel, pw.targetReplicas, pw.targetOffset);
-                it.remove();
+                toRemove.add(pw);
                 continue;
             }
 
@@ -122,9 +124,12 @@ public final class ReplicationManager {
                 log.info("Pending wait satisfied for channel: {}, synced replicas: {}",
                         getChannelInfo(pw.channel), syncedReplicas);
                 sendCurrentCount(pw.channel, pw.targetReplicas, pw.targetOffset);
-                it.remove();
+                toRemove.add(pw);
             }
         }
+
+        // Remove completed waits
+        pendingWaits.removeAll(toRemove);
     }
 
     public void sendCurrentCount(SocketChannel channel, int targetReplicas, long targetOffset) {
