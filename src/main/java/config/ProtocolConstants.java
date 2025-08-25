@@ -38,6 +38,8 @@ public final class ProtocolConstants {
     public static final String RDB_FILE_HEADER = "REDIS0011";
     public static final int RDB_OPCODE_EOF = 0xFF;
     public static final int RDB_OPCODE_SELECTDB = 0xFE;
+    public static final int RDB_OPCODE_EXPIRE_TIME_SEC = 0xFD;
+    public static final int RDB_OPCODE_EXPIRE_TIME_MS = 0xFC;
     public static final int RDB_OPCODE_RESIZEDB = 0xFB;
     public static final int RDB_OPCODE_METADATA = 0xFA;
     public static final int RDB_KEY_INDICATOR = 0x00; // 00xxxxxx
