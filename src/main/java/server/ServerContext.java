@@ -46,9 +46,16 @@ public final class ServerContext implements EventPublisher {
 
         this.storageService = new StorageService();
         this.storageService.setEventPublisher(this); // Set event publisher for key modification notifications
-        persistentRepository = config.appendOnlyMode()
-                ? new AofRepository(storageService.getStore()) // future
-                : new RdbRepository(storageService.getStore());
+
+        // Initialize persistent repository based on configuration
+        if (config.appendOnlyMode()) {
+            AofRepository aofRepo = new AofRepository(storageService.getStore());
+            aofRepo.setStorageService(storageService);
+            persistentRepository = aofRepo;
+        } else {
+            persistentRepository = new RdbRepository(storageService.getStore());
+        }
+
         this.blockingManager = new BlockingManager(storageService);
         this.transactionManager = new TransactionManager();
         this.pubSubManager = new PubSubManager();
@@ -77,11 +84,23 @@ public final class ServerContext implements EventPublisher {
     public void start(Selector selector) {
         timeoutScheduler.start();
         blockingManager.start(timeoutScheduler);
+
         try {
-            persistentRepository.loadSnapshot(rdbFile);
-            log.info("RDB snapshot loaded from {}", rdbFile.getAbsolutePath());
+            if (config.appendOnlyMode()) {
+                // For AOF mode, use appendonly.aof file
+                File aofFile = new File(config.dataDirectory(), "appendonly.aof");
+                if (persistentRepository instanceof AofRepository aofRepo) {
+                    aofRepo.initializeAofFile(aofFile);
+                }
+                persistentRepository.loadSnapshot(aofFile);
+                log.info("AOF file loaded from {}", aofFile.getAbsolutePath());
+            } else {
+                // For RDB mode, use the configured database file
+                persistentRepository.loadSnapshot(rdbFile);
+                log.info("RDB snapshot loaded from {}", rdbFile.getAbsolutePath());
+            }
         } catch (Exception e) {
-            log.error("Failed to load RDB snapshot", e);
+            log.error("Failed to load persistence file", e);
         }
 
         if (replicationClient != null) {
@@ -104,7 +123,14 @@ public final class ServerContext implements EventPublisher {
         blockingManager.clear();
 
         try {
-            if (!config.appendOnlyMode()) {
+            if (config.appendOnlyMode()) {
+                // Close AOF file on shutdown
+                var aofRepo = getAofRepository();
+                if (aofRepo != null) {
+                    aofRepo.close();
+                    log.info("AOF file closed");
+                }
+            } else {
                 // Save RDB snapshot on shutdown if not in AOF mode
                 persistentRepository.saveSnapshot(rdbFile);
                 log.info("RDB snapshot saved to {}", rdbFile.getAbsolutePath());
@@ -134,6 +160,14 @@ public final class ServerContext implements EventPublisher {
 
     public PersistentRepository getPersistentRepository() {
         return persistentRepository;
+    }
+
+    public AofRepository getAofRepository() {
+        return persistentRepository instanceof AofRepository aofRepo ? aofRepo : null;
+    }
+
+    public boolean isAofMode() {
+        return config.appendOnlyMode();
     }
 
     public File getRdbFile() {

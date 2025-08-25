@@ -71,13 +71,14 @@ public final class CommandDispatcher {
             return ResponseBuilder.error(ErrorCode.NOT_ALLOWED_IN_PUBSUB_MODE.format(commandName.toLowerCase()));
         }
 
-        return executeCommand(command, cmdContext, clientChannel, isPropagatedCommand);
+        return executeCommand(command, cmdContext, clientChannel, isPropagatedCommand, rawArgs);
     }
 
     private ByteBuffer executeCommand(Command command,
             CommandContext context,
             SocketChannel clientChannel,
-            boolean isPropagatedCommand) {
+            boolean isPropagatedCommand,
+            String[] rawArgs) {
         TransactionState transactionState = transactionManager.getOrCreateState(clientChannel);
 
         if (shouldQueueInTransaction(transactionState, command)) {
@@ -86,6 +87,16 @@ public final class CommandDispatcher {
         }
 
         CommandResult result = command.execute(context);
+
+        // Log write commands to AOF if enabled and command succeeded
+        if (result instanceof CommandResult.Success && shouldLogToAof(command, isPropagatedCommand) &&
+                context.getServerContext().isAofMode()) {
+            var aofRepo = context.getServerContext().getAofRepository();
+            if (aofRepo != null) {
+                aofRepo.appendCommand(rawArgs);
+            }
+        }
+
         boolean shouldSendResponse = !isPropagatedCommand || command.isReplicationCommand();
 
         return shouldSendResponse ? buildResponse(result) : null;
@@ -103,6 +114,14 @@ public final class CommandDispatcher {
 
     private boolean isPubSubCommand(Command command) {
         return command.isPubSubCommand() || command instanceof PingCommand;
+    }
+
+    private boolean shouldLogToAof(Command command, boolean isPropagatedCommand) {
+        return command.isWriteCommand() &&
+                !isPropagatedCommand &&
+                !command.isPubSubCommand() &&
+                !command.isReplicationCommand() &&
+                !isTransactionControlCommand(command);
     }
 
     private ByteBuffer buildResponse(CommandResult result) {

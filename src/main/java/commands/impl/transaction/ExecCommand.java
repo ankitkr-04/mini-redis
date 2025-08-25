@@ -5,6 +5,7 @@ import java.util.ArrayList;
 
 import commands.base.WriteCommand;
 import commands.context.CommandContext;
+import commands.core.Command;
 import commands.result.CommandResult;
 import commands.validation.CommandValidator;
 import commands.validation.ValidationResult;
@@ -49,6 +50,18 @@ public final class ExecCommand extends WriteCommand {
         for (var queued : queuedCommands) {
             CommandResult result = queued.command().execute(new CommandContext(queued.operation(), queued.rawArgs(),
                     context.getClientChannel(), context.getStorageService(), context.getServerContext()));
+
+            // Log successful write commands to AOF
+            // Exclude pub/sub commands, replication commands, and other non-persistent
+            // commands
+            if (result instanceof CommandResult.Success && shouldLogToAof(queued.command()) &&
+                    context.getServerContext().isAofMode()) {
+                var aofRepo = context.getServerContext().getAofRepository();
+                if (aofRepo != null) {
+                    aofRepo.appendCommand(queued.rawArgs());
+                }
+            }
+
             results.add(switch (result) {
                 case CommandResult.Success s -> s.response();
                 case CommandResult.Error e -> ResponseBuilder.error(e.message());
@@ -57,5 +70,11 @@ public final class ExecCommand extends WriteCommand {
             });
         }
         return CommandResult.success(ResponseBuilder.arrayOfBuffers(results));
+    }
+
+    private boolean shouldLogToAof(Command command) {
+        return command.isWriteCommand() &&
+                !command.isPubSubCommand() &&
+                !command.isReplicationCommand();
     }
 }
