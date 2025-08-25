@@ -193,13 +193,18 @@ public final class ReplicationClient {
                 log.info("RDB file received completely ({} bytes), handshake complete", expectedRdbSize);
                 state = ReplicationProtocol.HandshakeState.ACTIVE;
                 replicationState.setHandshakeStatus(ReplicationState.HandshakeStatus.COMPLETED);
+
+                // Process any remaining data in the buffer as active replication commands
+                if (buffer.hasRemaining()) {
+                    handleActiveReplication(buffer);
+                }
             }
         }
 
         private void handleActiveReplication(ByteBuffer buffer) {
             List<String[]> commands = ProtocolParser.parseRespArrays(buffer);
             for (String[] command : commands) {
-                ByteBuffer response = context.getCommandDispatcher().dispatch(command, masterChannel, true);
+                ByteBuffer response = context.getCommandDispatcher().dispatch(command, null, true);
                 if (response != null) {
                     try {
                         ReplicationProtocol.sendResponse(masterChannel, response);

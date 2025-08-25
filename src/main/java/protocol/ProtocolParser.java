@@ -78,7 +78,7 @@ public final class ProtocolParser {
     }
 
     private static String parseBulkString(ByteBuffer buffer) {
-        if (!buffer.hasRemaining() || buffer.get() != (byte) ')') {
+        if (!buffer.hasRemaining() || buffer.get() != (byte) '$') {
             return null;
         }
 

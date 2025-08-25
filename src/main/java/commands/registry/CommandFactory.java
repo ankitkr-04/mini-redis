@@ -1,13 +1,25 @@
 package commands.registry;
 
 import commands.impl.basic.EchoCommand;
+import commands.impl.basic.InfoCommand;
 import commands.impl.basic.PingCommand;
 import commands.impl.basic.TypeCommand;
+import commands.impl.lists.BlockingPopCommand;
+import commands.impl.lists.LengthCommand;
 import commands.impl.lists.PopCommand;
 import commands.impl.lists.PushCommand;
+import commands.impl.lists.RangeCommand;
+import commands.impl.replication.PsyncCommand;
+import commands.impl.replication.ReplconfCommand;
+import commands.impl.streams.AddStreamCommand;
+import commands.impl.streams.RangeStreamCommand;
+import commands.impl.streams.ReadStreamCommand;
 import commands.impl.strings.GetCommand;
 import commands.impl.strings.IncrCommand;
 import commands.impl.strings.SetCommand;
+import commands.impl.transaction.DiscardCommand;
+import commands.impl.transaction.ExecCommand;
+import commands.impl.transaction.MultiCommand;
 import server.ServerContext;
 
 public final class CommandFactory {
@@ -19,6 +31,7 @@ public final class CommandFactory {
         registry.register(new PingCommand());
         registry.register(new EchoCommand());
         registry.register(new TypeCommand());
+        registry.register(new InfoCommand());
 
         // String commands
         registry.register(new GetCommand());
@@ -28,8 +41,23 @@ public final class CommandFactory {
         // List commands
         registry.register(new PushCommand(), "LPUSH", "RPUSH");
         registry.register(new PopCommand(), "LPOP", "RPOP");
+        registry.register(new LengthCommand());
+        registry.register(new RangeCommand());
+        registry.register(new BlockingPopCommand(context.getBlockingManager()));
 
-        // Additional commands would be registered here...
+        // Streams commands
+        registry.register(new AddStreamCommand());
+        registry.register(new RangeStreamCommand());
+        registry.register(new ReadStreamCommand());
+
+        // Transaction commands
+        registry.register(new MultiCommand());
+        registry.register(new ExecCommand());
+        registry.register(new DiscardCommand());
+
+        // Replication commands
+        registry.register(new PsyncCommand());
+        registry.register(new ReplconfCommand());
 
         return registry;
     }

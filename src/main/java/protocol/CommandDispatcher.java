@@ -10,6 +10,7 @@ import commands.impl.transaction.ExecCommand;
 import commands.impl.transaction.MultiCommand;
 import commands.registry.CommandRegistry;
 import commands.result.CommandResult;
+import config.ProtocolConstants;
 import errors.ErrorCode;
 import server.ServerContext;
 import storage.StorageService;
@@ -71,7 +72,7 @@ public final class CommandDispatcher {
 
         if (shouldQueueInTransaction(transactionState, command)) {
             transactionState.queueCommand(command, context);
-            return ResponseBuilder.encode("+QUEUED\r\n");
+            return ResponseBuilder.encode(ProtocolConstants.RESP_QUEUED);
         }
 
         CommandResult result = command.execute(context);

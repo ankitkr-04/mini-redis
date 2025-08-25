@@ -7,6 +7,8 @@ module redis {
     exports commands.core;
     exports commands.context;
     exports commands.registry;
+    exports commands.impl.replication;
+    exports commands.result;
     exports commands.impl.basic;
     exports commands.impl.lists;
     exports commands.impl.streams;

@@ -1,14 +1,14 @@
 package commands.impl.basic;
 
+import java.util.LinkedHashMap;
+import java.util.Map;
+
 import commands.base.ReadCommand;
 import commands.context.CommandContext;
 import commands.result.CommandResult;
 import commands.validation.CommandValidator;
 import commands.validation.ValidationResult;
 import protocol.ResponseBuilder;
-
-import java.util.LinkedHashMap;
-import java.util.Map;
 
 public final class InfoCommand extends ReadCommand {
     @Override
@@ -25,7 +25,14 @@ public final class InfoCommand extends ReadCommand {
     protected CommandResult executeInternal(CommandContext context) {
         String section = context.getArgCount() == 2 ? context.getArg(1).toLowerCase() : null;
         Map<String, String> info = getInfo(section, context);
-        return CommandResult.success(ResponseBuilder.map(info));
+
+        // Format as a bulk string with key:value pairs separated by \r\n
+        StringBuilder infoText = new StringBuilder();
+        for (Map.Entry<String, String> entry : info.entrySet()) {
+            infoText.append(entry.getKey()).append(":").append(entry.getValue()).append("\r\n");
+        }
+
+        return CommandResult.success(ResponseBuilder.bulkString(infoText.toString()));
     }
 
     private Map<String, String> getInfo(String section, CommandContext context) {

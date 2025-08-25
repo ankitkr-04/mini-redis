@@ -8,6 +8,11 @@ public final class TransactionManager {
     private final Map<SocketChannel, TransactionState> clientStates = new ConcurrentHashMap<>();
 
     public TransactionState getOrCreateState(SocketChannel client) {
+        if (client == null) {
+            // For replicated commands, return a new transaction state that's not in a
+            // transaction
+            return new TransactionState();
+        }
         return clientStates.computeIfAbsent(client, _ -> new TransactionState());
     }
 
