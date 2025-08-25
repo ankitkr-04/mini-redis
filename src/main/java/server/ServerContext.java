@@ -1,5 +1,6 @@
 package server;
 
+import java.io.File;
 import java.io.IOException;
 import java.nio.channels.Selector;
 
@@ -15,7 +16,10 @@ import replication.ReplicationClient;
 import replication.ReplicationManager;
 import replication.ReplicationState;
 import scheduler.TimeoutScheduler;
+import storage.PersistentRepository;
 import storage.StorageService;
+import storage.repositories.AofRepository;
+import storage.repositories.RdbRepository;
 import transaction.TransactionManager;
 
 public final class ServerContext implements EventPublisher {
@@ -31,10 +35,17 @@ public final class ServerContext implements EventPublisher {
     private final ReplicationState replicationState;
     private final ReplicationClient replicationClient;
     private final ReplicationManager replicationManager;
+    private final PersistentRepository persistentRepository;
+    private final File rdbFile;
 
     public ServerContext(ServerConfiguration config) {
         this.config = config;
+        rdbFile = new File(config.dataDirectory(), config.databaseFilename());
+
         this.storageService = new StorageService();
+        persistentRepository = config.appendOnlyMode()
+                ? new AofRepository(storageService.getStore()) // future
+                : new RdbRepository(storageService.getStore());
         this.blockingManager = new BlockingManager(storageService);
         this.transactionManager = new TransactionManager();
 
@@ -61,6 +72,12 @@ public final class ServerContext implements EventPublisher {
     public void start(Selector selector) {
         timeoutScheduler.start();
         blockingManager.start(timeoutScheduler);
+       try{
+         persistentRepository.loadSnapshot(rdbFile);
+         log.info("RDB snapshot loaded from {}", rdbFile.getAbsolutePath());
+       } catch (Exception e) {
+         log.error("Failed to load RDB snapshot", e);   
+         }
 
         if (replicationClient != null) {
             try {
@@ -80,6 +97,16 @@ public final class ServerContext implements EventPublisher {
             replicationClient.shutdown();
         }
         blockingManager.clear();
+
+        try {
+            if (!config.appendOnlyMode()) {
+                // Save RDB snapshot on shutdown if not in AOF mode
+                persistentRepository.saveSnapshot(rdbFile);
+                log.info("RDB snapshot saved to {}", rdbFile.getAbsolutePath());
+            }
+        } catch (Exception e) {
+            log.error("Failed to save RDB snapshot on shutdown", e);
+        }
         storageService.clear();
 
         log.info("Server context shutdown complete");
@@ -94,6 +121,14 @@ public final class ServerContext implements EventPublisher {
     // Getters
     public ServerConfiguration getConfig() {
         return config;
+    }
+
+    public PersistentRepository getPersistentRepository() {
+        return persistentRepository;
+    }
+
+    public File getRdbFile() {
+        return rdbFile;
     }
 
     public StorageService getStorageService() {

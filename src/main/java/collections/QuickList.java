@@ -2,12 +2,13 @@ package collections;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Iterator;
 import java.util.List;
 import java.util.concurrent.locks.StampedLock;
 
 import config.ProtocolConstants;
 
-public final class QuickList<T> {
+public final class QuickList<T> implements Iterable<T> {
     private static final int NODE_CAPACITY = ProtocolConstants.LIST_NODE_CAPACITY;
 
     private static final class Node<T> {
@@ -296,6 +297,24 @@ public final class QuickList<T> {
                 current = current.next;
             }
             return sb.append("]").toString();
+        } finally {
+            lock.unlockRead(stamp);
+        }
+    }
+
+    @Override
+    public Iterator<T> iterator() {
+        long stamp = lock.readLock();
+        try {
+            List<T> snapshot = new ArrayList<>(totalSize);
+            Node<T> current = head;
+            while (current != null) {
+                for (int i = current.start; i < current.end; i++) {
+                    snapshot.add(current.elements[i]);
+                }
+                current = current.next;
+            }
+            return snapshot.iterator();
         } finally {
             lock.unlockRead(stamp);
         }

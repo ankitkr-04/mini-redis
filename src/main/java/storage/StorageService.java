@@ -4,6 +4,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
+
 import storage.expiry.ExpiryPolicy;
 import storage.repositories.ListRepository;
 import storage.repositories.StreamRepository;
@@ -22,6 +23,10 @@ public final class StorageService {
         this.stringRepo = new StringRepository(store);
         this.listRepo = new ListRepository(store);
         this.streamRepo = new StreamRepository(store);
+    }
+
+    public Map<String, StoredValue<?>> getStore() {
+        return store;
     }
 
     // String operations
@@ -106,6 +111,17 @@ public final class StorageService {
         return value != null ? value.type() : ValueType.NONE;
     }
 
+    public List<String> getKeysByPattern(String pattern) {
+        String regex = "^" + pattern
+                .replace("?", ".")
+                .replace("*", ".*")
+                + "$";
+
+        return store.keySet().stream()
+                .filter(key -> key.matches(regex))
+                .toList();
+    }
+
     public void clear() {
         store.clear();
     }
@@ -122,4 +138,5 @@ public final class StorageService {
         }
         return value;
     }
+
 }
