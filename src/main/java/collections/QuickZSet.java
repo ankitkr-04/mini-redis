@@ -12,8 +12,8 @@ public final class QuickZSet {
     private final ConcurrentSkipListMap<Double, ConcurrentSkipListSet<String>> scoreMap = new ConcurrentSkipListMap<>();
     private final ConcurrentHashMap<String, Double> memberMap = new ConcurrentHashMap<>();
 
-    /** Add or update a member */
-    public void add(String member, double score) {
+    /** Add or update a member, returns true if new member was added */
+    public boolean add(String member, double score) {
         Double oldScore = memberMap.put(member, score);
         if (oldScore != null) {
             scoreMap.computeIfPresent(oldScore, (k, set) -> {
@@ -27,6 +27,7 @@ public final class QuickZSet {
             set.add(member);
             return set;
         });
+        return oldScore == null; // Return true if this was a new member
     }
 
     /** Remove a member */

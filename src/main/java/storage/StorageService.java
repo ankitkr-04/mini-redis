@@ -103,9 +103,9 @@ public final class StorageService {
 
     // === ZSet operations ===
 
-    /** Add or update a member with a score */
-    public void zAdd(String key, String member, double score) {
-        zSetRepo.add(key, member, score);
+    /** Add or update a member with a score, returns true if new member was added */
+    public boolean zAdd(String key, String member, double score) {
+        return zSetRepo.add(key, member, score);
     }
 
     /** Remove a member */

@@ -58,10 +58,10 @@ public final class ZSetRepository implements Repository<QuickZSet> {
 
     // === ZSet operations ===
 
-    /** Add or update a member with a score */
-    public void add(String key, String member, double score) {
+    /** Add or update a member with a score, returns true if new member was added */
+    public boolean add(String key, String member, double score) {
         QuickZSet zset = getOrCreate(key);
-        zset.add(member, score);
+        return zset.add(member, score);
     }
 
     /** Remove a member */

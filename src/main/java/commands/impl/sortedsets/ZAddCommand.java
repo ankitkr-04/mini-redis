@@ -48,8 +48,9 @@ public class ZAddCommand extends WriteCommand {
             double score = context.getDoubleArg(i);
             String member = context.getArg(i + 1);
 
-            storage.zAdd(key, member, score);
-            addedCount++;
+            if (storage.zAdd(key, member, score)) {
+                addedCount++;
+            }
         }
 
         return CommandResult.success(ResponseBuilder.integer(addedCount));
