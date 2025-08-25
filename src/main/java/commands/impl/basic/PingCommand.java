@@ -1,5 +1,6 @@
 package commands.impl.basic;
 
+import java.nio.ByteBuffer;
 import java.util.List;
 
 import commands.base.ReadCommand;
@@ -11,6 +12,7 @@ import config.ProtocolConstants;
 import protocol.ResponseBuilder;
 
 public final class PingCommand extends ReadCommand {
+
     @Override
     public String getName() {
         return "PING";
@@ -23,21 +25,27 @@ public final class PingCommand extends ReadCommand {
 
     @Override
     protected CommandResult executeInternal(CommandContext context) {
-        boolean isInPubSubMode = context.getServerContext().getPubSubManager()
+        boolean inPubSubMode = context.getServerContext()
+                .getPubSubManager()
                 .isInPubSubMode(context.getClientChannel());
 
-        String response;
-        if (context.getArgs().length == 1) {
-            response = ProtocolConstants.PONG_RESPONSE; // "PONG"
+        String message = (context.getArgs().length == 1) ? null : context.getArgs()[1];
+
+        ByteBuffer response;
+        if (inPubSubMode) {
+            // Pub/Sub mode → always array reply: ["pong", <message or "">]
+            String second = (message != null) ? message : "";
+            response = ResponseBuilder.array(List.of(
+                    ProtocolConstants.PONG_RESPONSE,
+                    second));
+        } else if (message == null) {
+            // No argument → simple string "PONG"
+            response = ResponseBuilder.simpleString(ProtocolConstants.PONG_RESPONSE);
         } else {
-            response = context.getArgs()[1]; // echo back message
+            // With argument → bulk string reply of argument
+            response = ResponseBuilder.bulkString(message);
         }
 
-        var toSend = isInPubSubMode
-                ? ResponseBuilder.array(List.of(ProtocolConstants.PONG_RESPONSE, response))
-                : ResponseBuilder.bulkString(response);
-
-        return CommandResult.success(toSend);
+        return CommandResult.success(response);
     }
-
 }
