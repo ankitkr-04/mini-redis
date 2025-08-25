@@ -35,7 +35,7 @@ public final class PingCommand extends ReadCommand {
 
         var toSend = isInPubSubMode
                 ? ResponseBuilder.array(List.of(ProtocolConstants.PONG_RESPONSE, response))
-                : ResponseBuilder.encode(response);
+                : ResponseBuilder.bulkString(response);
 
         return CommandResult.success(toSend);
     }
