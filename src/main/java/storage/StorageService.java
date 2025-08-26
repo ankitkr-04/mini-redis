@@ -316,9 +316,9 @@ public final class StorageService {
         long expiredCount = store.entrySet().stream()
                 .filter(entry -> entry.getValue().isExpired())
                 .count();
-        
+
         store.entrySet().removeIf(entry -> entry.getValue().isExpired());
-        
+
         // Record expired keys metrics
         if (expiredCount > 0 && eventPublisher instanceof server.ServerContext serverContext) {
             for (int i = 0; i < expiredCount; i++) {

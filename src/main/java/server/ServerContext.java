@@ -64,7 +64,7 @@ public final class ServerContext implements EventPublisher {
 
         this.blockingManager = new BlockingManager(storageService);
         this.transactionManager = new TransactionManager(this);
-                this.pubSubManager = new PubSubManager(this);
+        this.pubSubManager = new PubSubManager(this);
         // Initialize metrics
         this.metricsCollector = new MetricsCollector();
         this.metricsHandler = new MetricsHandler(metricsCollector);

@@ -55,7 +55,8 @@ public final class TransactionManager {
         }
     }
 
-    public void queueCommand(SocketChannel client, commands.core.Command command, commands.context.CommandContext context) {
+    public void queueCommand(SocketChannel client, commands.core.Command command,
+            commands.context.CommandContext context) {
         TransactionState state = getOrCreateState(client);
         if (state.isInTransaction()) {
             state.queueCommand(command, context);

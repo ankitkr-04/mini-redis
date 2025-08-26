@@ -16,9 +16,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import protocol.ProtocolParser;
+import server.ServerContext;
 import storage.StorageService;
 import storage.types.StoredValue;
-import server.ServerContext;
 
 public class AofRepository implements PersistentRepository {
     private static final Logger log = LoggerFactory.getLogger(AofRepository.class);
@@ -57,7 +57,7 @@ public class AofRepository implements PersistentRepository {
             String respCommand = formatRespArray(command);
             aofWriter.write(respCommand);
             aofWriter.flush(); // Ensure immediate write for durability
-            
+
             // Record AOF write metric
             serverContext.getMetricsCollector().incrementAofWrites();
         } catch (IOException e) {
