@@ -1,5 +1,8 @@
 package commands.registry;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import commands.impl.basic.EchoCommand;
 import commands.impl.basic.PingCommand;
 import commands.impl.basic.TypeCommand;
@@ -37,65 +40,115 @@ import commands.impl.transaction.UnwatchCommand;
 import commands.impl.transaction.WatchCommand;
 import server.ServerContext;
 
+/**
+ * Factory for creating and registering all supported Redis command
+ * implementations.
+ * Registers commands into a CommandRegistry instance.
+ */
 public final class CommandFactory {
 
-    public static CommandRegistry createRegistry(ServerContext context) {
-        var registry = new CommandRegistry();
+    private static final Logger LOGGER = LoggerFactory.getLogger(CommandFactory.class);
 
-        // Basic commands
+    // Command names as constants
+    private static final String LPUSH = "LPUSH";
+    private static final String RPUSH = "RPUSH";
+    private static final String LPOP = "LPOP";
+    private static final String RPOP = "RPOP";
+    private static final String SUBSCRIBE = "SUBSCRIBE";
+    private static final String PSUBSCRIBE = "PSUBSCRIBE";
+    private static final String UNSUBSCRIBE = "UNSUBSCRIBE";
+    private static final String PUNSUBSCRIBE = "PUNSUBSCRIBE";
+
+    private CommandFactory() {
+        // Prevent instantiation
+    }
+
+    /**
+     * Creates and returns a CommandRegistry with all supported commands registered.
+     *
+     * @param serverContext the server context required for certain commands
+     * @return a populated CommandRegistry instance
+     */
+    public static CommandRegistry createRegistry(ServerContext serverContext) {
+        CommandRegistry commandRegistry = new CommandRegistry();
+
+        registerBasicCommands(commandRegistry);
+        registerKeyCommands(commandRegistry);
+        registerConfigCommands(commandRegistry);
+        registerStringCommands(commandRegistry);
+        registerListCommands(commandRegistry, serverContext);
+        registerStreamCommands(commandRegistry);
+        registerTransactionCommands(commandRegistry);
+        registerReplicationCommands(commandRegistry);
+        registerPubSubCommands(commandRegistry);
+        registerSortedSetCommands(commandRegistry);
+
+        LOGGER.debug("All commands registered successfully.");
+        return commandRegistry;
+    }
+
+    private static void registerBasicCommands(CommandRegistry registry) {
         registry.register(new PingCommand());
         registry.register(new EchoCommand());
         registry.register(new TypeCommand());
+    }
 
-        // Keys commands
+    private static void registerKeyCommands(CommandRegistry registry) {
         registry.register(new KeysComamnd());
+    }
 
-        // Configuration commands
+    private static void registerConfigCommands(CommandRegistry registry) {
         registry.register(new InfoCommand());
         registry.register(new ConfigCommand());
         registry.register(new MetricsCommand());
+    }
 
-        // String commands
+    private static void registerStringCommands(CommandRegistry registry) {
         registry.register(new GetCommand());
         registry.register(new SetCommand());
         registry.register(new IncrCommand());
+    }
 
-        // List commands
-        registry.register(new PushCommand(), "LPUSH", "RPUSH");
-        registry.register(new PopCommand(), "LPOP", "RPOP");
+    private static void registerListCommands(CommandRegistry registry, ServerContext context) {
+        registry.register(new PushCommand(), LPUSH, RPUSH);
+        registry.register(new PopCommand(), LPOP, RPOP);
         registry.register(new LengthCommand());
         registry.register(new RangeCommand());
         registry.register(new BlockingPopCommand(context.getBlockingManager()));
+    }
 
-        // Streams commands
+    private static void registerStreamCommands(CommandRegistry registry) {
         registry.register(new AddStreamCommand());
         registry.register(new RangeStreamCommand());
         registry.register(new ReadStreamCommand());
+    }
 
-        // Transaction commands
+    private static void registerTransactionCommands(CommandRegistry registry) {
         registry.register(new MultiCommand());
         registry.register(new ExecCommand());
         registry.register(new DiscardCommand());
         registry.register(new WatchCommand());
         registry.register(new UnwatchCommand());
+    }
 
-        // Replication commands
+    private static void registerReplicationCommands(CommandRegistry registry) {
         registry.register(new PsyncCommand());
         registry.register(new ReplconfCommand());
         registry.register(new WaitCommand());
+    }
 
-        // PubSubCommand
-        registry.register(new SubscribeCommand(), "SUBSCRIBE", "PSUBSCRIBE");
-        registry.register(new UnsubscribeCommand(), "UNSUBSCRIBE", "PUNSUBSCRIBE");
+    private static void registerPubSubCommands(CommandRegistry registry) {
+        registry.register(new SubscribeCommand(), SUBSCRIBE, PSUBSCRIBE);
+        registry.register(new UnsubscribeCommand(), UNSUBSCRIBE, PUNSUBSCRIBE);
         registry.register(new PublishCommand());
+    }
 
-        // SortedSet commands
+    private static void registerSortedSetCommands(CommandRegistry registry) {
         registry.register(new ZAddCommand());
         registry.register(new ZCardCommand());
         registry.register(new ZRangeCommand());
         registry.register(new ZRankCommand());
         registry.register(new ZRemCommand());
         registry.register(new ZScoreCommand());
-        return registry;
     }
 }

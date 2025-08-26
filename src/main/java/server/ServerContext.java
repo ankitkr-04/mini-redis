@@ -26,10 +26,26 @@ import storage.persistence.PersistentRepository;
 import storage.persistence.RdbRepository;
 import transaction.TransactionManager;
 
+/**
+ * Core server context responsible for initializing and managing all
+ * subsystems (storage, persistence, replication, pub/sub, HTTP, etc.).
+ *
+ * <p>
+ * Provides a central access point for shared resources and coordinates
+ * server startup and shutdown.
+ * </p>
+ *
+ * @author Ankit Kumar
+ * @version 1.0
+ */
 public final class ServerContext implements EventPublisher {
-    private static final Logger log = LoggerFactory.getLogger(ServerContext.class);
 
-    private final ServerConfiguration config;
+    private static final Logger LOGGER = LoggerFactory.getLogger(ServerContext.class);
+
+    /** Default filename for Append-Only File persistence. */
+    private static final String AOF_FILENAME = "appendonly.aof";
+
+    private final ServerConfiguration serverConfig;
     private final StorageService storageService;
     private final BlockingManager blockingManager;
     private final CommandRegistry commandRegistry;
@@ -40,41 +56,40 @@ public final class ServerContext implements EventPublisher {
     private final ReplicationClient replicationClient;
     private final ReplicationManager replicationManager;
     private final PersistentRepository persistentRepository;
-    private final File rdbFile;
+    private final File rdbSnapshotFile;
     private final PubSubManager pubSubManager;
     private final MetricsCollector metricsCollector;
     private final MetricsHandler metricsHandler;
     private final HttpServerManager httpServerManager;
 
-    public ServerContext(ServerConfiguration config) {
-        this.config = config;
-        rdbFile = new File(config.dataDirectory(), config.databaseFilename());
+    /**
+     * Creates and initializes the server context.
+     *
+     * @param serverConfig the configuration used to set up server components
+     */
+    public ServerContext(ServerConfiguration serverConfig) {
+        this.serverConfig = serverConfig;
+        this.rdbSnapshotFile = new File(serverConfig.dataDirectory(), serverConfig.databaseFilename());
 
         this.storageService = new StorageService();
-        this.storageService.setEventPublisher(this); // Set event publisher for key modification notifications
+        this.storageService.setEventPublisher(this);
 
-        // Initialize persistent repository based on configuration
-        if (config.appendOnlyMode()) {
-            AofRepository aofRepo = new AofRepository(storageService.getStore(), this);
-            aofRepo.setStorageService(storageService);
-            persistentRepository = aofRepo;
-        } else {
-            persistentRepository = new RdbRepository(storageService.getStore());
-        }
+        this.persistentRepository = serverConfig.appendOnlyMode()
+                ? initAofRepository()
+                : new RdbRepository(storageService.getStore());
 
         this.blockingManager = new BlockingManager(storageService);
         this.transactionManager = new TransactionManager(this);
         this.pubSubManager = new PubSubManager(this);
-        // Initialize metrics
+
         this.metricsCollector = new MetricsCollector();
         this.metricsHandler = new MetricsHandler(metricsCollector);
 
-        // Initialize replication
         this.replicationState = new ReplicationState(
-                config.isReplicaMode(),
-                config.isReplicaMode() ? config.getMasterInfo().host() : null,
-                config.isReplicaMode() ? config.getMasterInfo().port() : 0,
-                config.replicationBacklogSize());
+                serverConfig.isReplicaMode(),
+                serverConfig.isReplicaMode() ? serverConfig.getMasterInfo().host() : null,
+                serverConfig.isReplicaMode() ? serverConfig.getMasterInfo().port() : 0,
+                serverConfig.replicationBacklogSize());
 
         this.replicationManager = new ReplicationManager(replicationState, this);
         this.commandRegistry = CommandFactory.createRegistry(this);
@@ -82,65 +97,78 @@ public final class ServerContext implements EventPublisher {
                 pubSubManager, this);
         this.timeoutScheduler = new TimeoutScheduler();
 
-        this.replicationClient = config.isReplicaMode()
-                ? new ReplicationClient(config.getMasterInfo(), replicationState, config.port(), this)
+        this.replicationClient = serverConfig.isReplicaMode()
+                ? new ReplicationClient(serverConfig.getMasterInfo(), replicationState, serverConfig.port(), this)
                 : null;
 
-        // Initialize HTTP server if enabled
-        this.httpServerManager = config.httpServerEnabled()
-                ? new HttpServerManager(this, config.bindAddress(), config.httpPort())
+        this.httpServerManager = serverConfig.httpServerEnabled()
+                ? new HttpServerManager(this, serverConfig.bindAddress(), serverConfig.httpPort())
                 : null;
 
-        log.info("ServerContext initialized - Port: {}, Role: {}, HTTP: {}",
-                config.port(), replicationState.getRole(),
-                config.httpServerEnabled() ? "enabled on " + config.httpPort() : "disabled");
+        LOGGER.info("ServerContext initialized - Port: {}, Role: {}, HTTP: {}",
+                serverConfig.port(), replicationState.getRole(),
+                serverConfig.httpServerEnabled() ? "enabled on " + serverConfig.httpPort() : "disabled");
     }
 
+    private PersistentRepository initAofRepository() {
+        AofRepository aofRepository = new AofRepository(storageService.getStore(), this);
+        aofRepository.setStorageService(storageService);
+        return aofRepository;
+    }
+
+    /**
+     * Starts all server components (scheduler, persistence, replication, HTTP).
+     *
+     * @param selector the NIO selector for replication client registration
+     */
     public void start(Selector selector) {
         timeoutScheduler.start();
         blockingManager.start(timeoutScheduler);
 
-        try {
-            if (config.appendOnlyMode()) {
-                // For AOF mode, use appendonly.aof file
-                File aofFile = new File(config.dataDirectory(), "appendonly.aof");
-                if (persistentRepository instanceof AofRepository aofRepo) {
-                    aofRepo.initializeAofFile(aofFile);
-                }
-                persistentRepository.loadSnapshot(aofFile);
-                log.info("AOF file loaded from {}", aofFile.getAbsolutePath());
-            } else {
-                // For RDB mode, use the configured database file
-                persistentRepository.loadSnapshot(rdbFile);
-                log.info("RDB snapshot loaded from {}", rdbFile.getAbsolutePath());
-            }
-        } catch (Exception e) {
-            log.error("Failed to load persistence file", e);
-        }
+        loadPersistence();
 
         if (replicationClient != null) {
             try {
                 replicationClient.register(selector);
-                log.info("Replication client registered for master connection");
+                LOGGER.info("Replication client registered for master connection");
             } catch (IOException e) {
-                log.error("Failed to start replication client", e);
+                LOGGER.error("Failed to start replication client", e);
             }
         }
 
-        // Start HTTP server if enabled
         if (httpServerManager != null) {
             try {
                 httpServerManager.start();
             } catch (IOException e) {
-                log.error("Failed to start HTTP server", e);
+                LOGGER.error("Failed to start HTTP server", e);
             }
         }
     }
 
-    public void shutdown() {
-        log.info("Shutting down server context");
+    private void loadPersistence() {
+        try {
+            if (serverConfig.appendOnlyMode()) {
+                File aofFile = new File(serverConfig.dataDirectory(), AOF_FILENAME);
+                if (persistentRepository instanceof AofRepository aofRepo) {
+                    aofRepo.initializeAofFile(aofFile);
+                }
+                persistentRepository.loadSnapshot(aofFile);
+                LOGGER.info("AOF file loaded from {}", aofFile.getAbsolutePath());
+            } else {
+                persistentRepository.loadSnapshot(rdbSnapshotFile);
+                LOGGER.info("RDB snapshot loaded from {}", rdbSnapshotFile.getAbsolutePath());
+            }
+        } catch (Exception e) {
+            LOGGER.error("Failed to load persistence file", e);
+        }
+    }
 
-        // Stop HTTP server
+    /**
+     * Gracefully shuts down the server and all managed components.
+     */
+    public void shutdown() {
+        LOGGER.info("Shutting down server context");
+
         if (httpServerManager != null) {
             httpServerManager.stop();
         }
@@ -151,25 +179,27 @@ public final class ServerContext implements EventPublisher {
         }
         blockingManager.clear();
 
-        try {
-            if (config.appendOnlyMode()) {
-                // Close AOF file on shutdown
-                var aofRepo = getAofRepository();
-                if (aofRepo != null) {
-                    aofRepo.close();
-                    log.info("AOF file closed");
-                }
-            } else {
-                // Save RDB snapshot on shutdown if not in AOF mode
-                persistentRepository.saveSnapshot(rdbFile);
-                log.info("RDB snapshot saved to {}", rdbFile.getAbsolutePath());
-            }
-        } catch (Exception e) {
-            log.error("Failed to save RDB snapshot on shutdown", e);
-        }
+        savePersistenceOnShutdown();
         storageService.clear();
 
-        log.info("Server context shutdown complete");
+        LOGGER.info("Server context shutdown complete");
+    }
+
+    private void savePersistenceOnShutdown() {
+        try {
+            if (serverConfig.appendOnlyMode()) {
+                AofRepository aofRepository = getAofRepository();
+                if (aofRepository != null) {
+                    aofRepository.close();
+                    LOGGER.info("AOF file closed");
+                }
+            } else {
+                persistentRepository.saveSnapshot(rdbSnapshotFile);
+                LOGGER.info("RDB snapshot saved to {}", rdbSnapshotFile.getAbsolutePath());
+            }
+        } catch (Exception e) {
+            LOGGER.error("Failed to save persistence on shutdown", e);
+        }
     }
 
     public void propagateWriteCommand(String[] commandArgs) {
@@ -178,9 +208,9 @@ public final class ServerContext implements EventPublisher {
         }
     }
 
-    // Getters
+    // ---- Getters ----
     public ServerConfiguration getConfig() {
-        return config;
+        return serverConfig;
     }
 
     public PubSubManager getPubSubManager() {
@@ -196,11 +226,11 @@ public final class ServerContext implements EventPublisher {
     }
 
     public boolean isAofMode() {
-        return config.appendOnlyMode();
+        return serverConfig.appendOnlyMode();
     }
 
     public File getRdbFile() {
-        return rdbFile;
+        return rdbSnapshotFile;
     }
 
     public StorageService getStorageService() {
@@ -243,7 +273,15 @@ public final class ServerContext implements EventPublisher {
         return httpServerManager;
     }
 
-    // EventPublisher implementation
+    public MetricsCollector getMetricsCollector() {
+        return metricsCollector;
+    }
+
+    public MetricsHandler getMetricsHandler() {
+        return metricsHandler;
+    }
+
+    // ---- EventPublisher implementation ----
     @Override
     public void publishDataAdded(String key) {
         blockingManager.onDataAdded(key);
@@ -257,14 +295,5 @@ public final class ServerContext implements EventPublisher {
     @Override
     public void publishKeyModified(String key) {
         transactionManager.invalidateWatchingClients(key);
-    }
-
-    // Metrics getters
-    public MetricsCollector getMetricsCollector() {
-        return metricsCollector;
-    }
-
-    public MetricsHandler getMetricsHandler() {
-        return metricsHandler;
     }
 }

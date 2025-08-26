@@ -1,5 +1,11 @@
 package config;
 
+/*
+ * Holds protocol-related constants and utility methods for a Redis-like server.
+ * This includes RESP markers, standard responses, RDB opcodes, and methods to
+ * generate protocol-specific byte arrays.
+ * 
+ */
 public final class ProtocolConstants {
     private ProtocolConstants() {
     } // Utility class

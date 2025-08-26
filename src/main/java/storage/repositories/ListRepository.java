@@ -3,6 +3,10 @@ package storage.repositories;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import collections.QuickList;
 import storage.Repository;
 import storage.expiry.ExpiryPolicy;
@@ -10,7 +14,17 @@ import storage.types.ListValue;
 import storage.types.StoredValue;
 import storage.types.ValueType;
 
+/**
+ * Repository for managing Redis-like list data structures.
+ * Provides methods for list operations such as push, pop, and range queries.
+ */
 public final class ListRepository implements Repository<QuickList<String>> {
+
+    private static final Logger LOGGER = LoggerFactory.getLogger(ListRepository.class);
+
+    /** Represents an empty list length. */
+    private static final int EMPTY_LIST_LENGTH = 0;
+
     private final Map<String, StoredValue<?>> store;
 
     public ListRepository(Map<String, StoredValue<?>> store) {
@@ -20,17 +34,23 @@ public final class ListRepository implements Repository<QuickList<String>> {
     @Override
     public void put(String key, QuickList<String> value, ExpiryPolicy expiry) {
         store.put(key, new ListValue(value, expiry));
+        LOGGER.debug("Put list for key: {}", key);
     }
 
     @Override
     public Optional<QuickList<String>> get(String key) {
-        return getValidValue(key).filter(v -> v.type() == ValueType.LIST)
-                .map(v -> ((ListValue) v).value());
+        return getValidValue(key)
+                .filter(storedValue -> storedValue.type() == ValueType.LIST)
+                .map(storedValue -> ((ListValue) storedValue).value());
     }
 
     @Override
     public boolean delete(String key) {
-        return store.remove(key) != null;
+        boolean removed = store.remove(key) != null;
+        if (removed) {
+            LOGGER.info("Deleted key: {}", key);
+        }
+        return removed;
     }
 
     @Override

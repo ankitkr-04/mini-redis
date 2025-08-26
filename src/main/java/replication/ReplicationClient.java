@@ -12,21 +12,47 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import config.ConfigurationParser.MasterInfo;
+import config.ServerConfig;
 import protocol.ProtocolParser;
 import server.ServerContext;
 
+/**
+ * Client responsible for connecting to and synchronizing with a Redis master
+ * server.
+ * 
+ * <p>
+ * This class handles the complete replication lifecycle including initial
+ * handshake,
+ * full synchronization, and ongoing incremental synchronization. It manages the
+ * connection state, protocol negotiations, and data transfer with the master
+ * server.
+ * </p>
+ * 
+ * @author Ankit Kumar
+ * @version 1.0
+ * @since 1.0
+ */
 public final class ReplicationClient {
-    private static final Logger log = LoggerFactory.getLogger(ReplicationClient.class);
-    private static final int BUFFER_SIZE = 1024;
+
+    /** Logger instance for this class */
+    private static final Logger LOGGER = LoggerFactory.getLogger(ReplicationClient.class);
 
     private final MasterInfo masterInfo;
     private final ReplicationState replicationState;
     private final int replicaPort;
     private final ServerContext context;
     private final HandshakeManager handshakeManager;
-    private final ByteBuffer readBuffer = ByteBuffer.allocate(BUFFER_SIZE);
+    private final ByteBuffer readBuffer = ByteBuffer.allocate(ServerConfig.BUFFER_SIZE);
     private SocketChannel masterChannel;
 
+    /**
+     * Constructs a new ReplicationClient.
+     * 
+     * @param masterInfo       information about the master server
+     * @param replicationState the replication state tracker
+     * @param replicaPort      the port this replica is listening on
+     * @param context          the server context containing shared resources
+     */
     public ReplicationClient(MasterInfo masterInfo, ReplicationState replicationState,
             int replicaPort, ServerContext context) {
         this.masterInfo = masterInfo;
@@ -34,9 +60,15 @@ public final class ReplicationClient {
         this.replicaPort = replicaPort;
         this.context = context;
         this.handshakeManager = new HandshakeManager();
-        log.info("Created replication client for master {}:{}", masterInfo.host(), masterInfo.port());
+        LOGGER.info("Created replication client for master {}:{}", masterInfo.host(), masterInfo.port());
     }
 
+    /**
+     * Registers this client with the selector and initiates connection to master.
+     * 
+     * @param selector the NIO selector for managing channels
+     * @throws IOException if connection setup fails
+     */
     public void register(Selector selector) throws IOException {
         if (handshakeManager.getState() != ReplicationProtocol.HandshakeState.INITIAL) {
             throw new IllegalStateException("Already started");
@@ -46,7 +78,7 @@ public final class ReplicationClient {
         masterChannel.configureBlocking(false);
         masterChannel.connect(new InetSocketAddress(masterInfo.host(), masterInfo.port()));
         masterChannel.register(selector, SelectionKey.OP_CONNECT, this);
-        log.info("Connecting to master {}:{}", masterInfo.host(), masterInfo.port());
+        LOGGER.info("Connecting to master {}:{}", masterInfo.host(), masterInfo.port());
     }
 
     public void handleKey(SelectionKey key) throws IOException {
@@ -64,13 +96,13 @@ public final class ReplicationClient {
                 masterChannel.close();
             }
         } catch (IOException e) {
-            log.error("Error closing replication client", e);
+            LOGGER.error("Error closing replication client", e);
         }
     }
 
     private void handleConnect() throws IOException {
         if (masterChannel.finishConnect()) {
-            log.info("Connected to master, starting handshake");
+            LOGGER.info("Connected to master, starting handshake");
             handshakeManager.startHandshake();
         }
     }
@@ -99,7 +131,7 @@ public final class ReplicationClient {
         }
 
         public void handleIncomingData(ByteBuffer buffer) throws IOException {
-            log.info("HandshakeManager: current state = {}, buffer has {} bytes", state, buffer.remaining());
+            LOGGER.info("HandshakeManager: current state = {}, buffer has {} bytes", state, buffer.remaining());
 
             // Process data based on current state, potentially multiple times if state
             // changes
@@ -113,7 +145,7 @@ public final class ReplicationClient {
                     case PSYNC_SENT -> handlePsyncResponse(buffer);
                     case RDB_RECEIVING -> handleRdbData(buffer);
                     case ACTIVE -> handleActiveReplication(buffer);
-                    default -> log.warn("Unexpected state: {}", state);
+                    default -> LOGGER.warn("Unexpected state: {}", state);
                 }
 
                 // If no data was consumed, break to avoid infinite loop
@@ -165,11 +197,11 @@ public final class ReplicationClient {
         private void handlePsyncResponse(ByteBuffer buffer) throws IOException {
             String response = ProtocolParser.parseSimpleString(buffer);
             if (response == null) {
-                log.debug("PSYNC response not complete yet, waiting for more data");
+                LOGGER.debug("PSYNC response not complete yet, waiting for more data");
                 return;
             }
 
-            log.info("Received PSYNC response: {}", response);
+            LOGGER.info("Received PSYNC response: {}", response);
             String[] parts = response.split(" ");
             if (parts.length != 3 || !"FULLRESYNC".equals(parts[0])) {
                 throw new IOException("Unexpected PSYNC response: " + response);
@@ -179,27 +211,27 @@ public final class ReplicationClient {
             long offset = Long.parseLong(parts[2]);
             replicationState.setMasterReplicationId(masterId);
             replicationState.incrementReplicationOffset(offset - replicationState.getMasterReplicationOffset());
-            log.info("Full resync initiated with ID {} offset {}", masterId, offset);
-            log.info("Transitioning to RDB_RECEIVING state, buffer has {} bytes remaining", buffer.remaining());
+            LOGGER.info("Full resync initiated with ID {} offset {}", masterId, offset);
+            LOGGER.info("Transitioning to RDB_RECEIVING state, buffer has {} bytes remaining", buffer.remaining());
             state = ReplicationProtocol.HandshakeState.RDB_RECEIVING;
         }
 
         private void handleRdbData(ByteBuffer buffer) {
             if (expectedRdbSize == -1) {
                 if (!buffer.hasRemaining() || buffer.get() != (byte) '$') {
-                    log.error("Invalid RDB header - no $ marker");
+                    LOGGER.error("Invalid RDB header - no $ marker");
                     return;
                 }
 
                 Long size = parseNumber(buffer);
                 if (size == null) {
-                    log.debug("Could not parse RDB size yet, waiting for more data");
+                    LOGGER.debug("Could not parse RDB size yet, waiting for more data");
                     return;
                 }
 
                 expectedRdbSize = size.intValue();
                 rdbBuffer = ByteBuffer.allocate(expectedRdbSize);
-                log.info("Expecting RDB file of {} bytes", expectedRdbSize);
+                LOGGER.info("Expecting RDB file of {} bytes", expectedRdbSize);
             }
 
             int remaining = Math.min(expectedRdbSize - rdbBuffer.position(), buffer.remaining());
@@ -207,17 +239,18 @@ public final class ReplicationClient {
                 byte[] data = new byte[remaining];
                 buffer.get(data);
                 rdbBuffer.put(data);
-                log.debug("Read {} bytes of RDB data, total: {}/{}", remaining, rdbBuffer.position(), expectedRdbSize);
+                LOGGER.debug("Read {} bytes of RDB data, total: {}/{}", remaining, rdbBuffer.position(),
+                        expectedRdbSize);
             }
 
             if (rdbBuffer.position() == expectedRdbSize) {
-                log.info("RDB file received completely ({} bytes), transitioning to ACTIVE state", expectedRdbSize);
+                LOGGER.info("RDB file received completely ({} bytes), transitioning to ACTIVE state", expectedRdbSize);
                 state = ReplicationProtocol.HandshakeState.ACTIVE;
                 replicationState.setHandshakeStatus(ReplicationState.HandshakeStatus.COMPLETED);
 
                 // Process any remaining data in the buffer as active replication commands
                 if (buffer.hasRemaining()) {
-                    log.info("Processing remaining {} bytes as active replication commands", buffer.remaining());
+                    LOGGER.info("Processing remaining {} bytes as active replication commands", buffer.remaining());
                     handleActiveReplication(buffer);
                 }
             }
@@ -226,19 +259,19 @@ public final class ReplicationClient {
         private void handleActiveReplication(ByteBuffer buffer) {
             List<String[]> commands = ProtocolParser.parseRespArrays(buffer);
             for (String[] command : commands) {
-                log.info("Processing replication command: {}", String.join(" ", command));
+                LOGGER.info("Processing replication command: {}", String.join(" ", command));
                 ByteBuffer response = context.getCommandDispatcher().dispatch(command, null, true);
                 if (response != null) {
-                    log.info("Got response for command {}, sending {} bytes to master", command[0],
+                    LOGGER.info("Got response for command {}, sending {} bytes to master", command[0],
                             response.remaining());
                     try {
                         ReplicationProtocol.sendResponse(masterChannel, response);
-                        log.info("Successfully sent response to master");
+                        LOGGER.info("Successfully sent response to master");
                     } catch (IOException e) {
-                        log.error("Failed to send response to master", e);
+                        LOGGER.error("Failed to send response to master", e);
                     }
                 } else {
-                    log.info("No response generated for command {}", command[0]);
+                    LOGGER.info("No response generated for command {}", command[0]);
                 }
                 replicationState.incrementReplicationOffset(ReplicationProtocol.calculateCommandSize(command));
             }

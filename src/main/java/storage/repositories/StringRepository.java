@@ -2,6 +2,7 @@ package storage.repositories;
 
 import java.util.Map;
 import java.util.Optional;
+
 import errors.ErrorCode;
 import storage.Repository;
 import storage.expiry.ExpiryPolicy;
@@ -9,7 +10,20 @@ import storage.types.StoredValue;
 import storage.types.StringValue;
 import storage.types.ValueType;
 
+/**
+ * StringRepository implementation.
+ *
+ * <p>
+ * Storage layer implementation for data persistence.
+ * </p>
+ *
+ * @author Ankit Kumar
+ * @version 1.0
+ * @since 1.0
+ */
+
 public final class StringRepository implements Repository<String> {
+
     private final Map<String, StoredValue<?>> store;
 
     public StringRepository(Map<String, StoredValue<?>> store) {

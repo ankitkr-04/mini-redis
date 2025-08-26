@@ -5,6 +5,9 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import commands.base.BlockingCommand;
 import commands.context.CommandContext;
 import commands.result.CommandResult;
@@ -13,10 +16,40 @@ import config.ProtocolConstants;
 import protocol.ResponseBuilder;
 import storage.StorageService;
 
+/**
+ * Implements the Redis XREAD command for reading entries from one or more
+ * streams.
+ * <p>
+ * Features:
+ * <ul>
+ * <li>Reads entries added after specified IDs for given streams.</li>
+ * <li>Supports blocking reads with optional timeout.</li>
+ * <li>Allows limiting the number of entries returned per stream.</li>
+ * <li>Returns RESP-encoded responses.</li>
+ * </ul>
+ * </p>
+ *
+ * Example use case:
+ * 
+ * <pre>
+ *   XREAD COUNT 10 STREAMS mystream 0
+ * </pre>
+ * 
+ * Reads up to 10 new entries from "mystream" after ID 0.
+ *
+ * @author Ankit Kumar
+ * @version 1.0
+ */
 public final class ReadStreamCommand extends BlockingCommand {
+
+    private static final Logger LOGGER = LoggerFactory.getLogger(ReadStreamCommand.class);
+
+    private static final String COMMAND_NAME = "XREAD";
+    private static final int DEFAULT_NO_LIMIT = -1;
+
     @Override
     public String getName() {
-        return "XREAD";
+        return COMMAND_NAME;
     }
 
     @Override
@@ -25,60 +58,74 @@ public final class ReadStreamCommand extends BlockingCommand {
             XReadArgs.parse(context);
             return ValidationResult.valid();
         } catch (IllegalArgumentException e) {
+            LOGGER.debug("XREAD validation failed: {}", e.getMessage());
             return ValidationResult.invalid(e.getMessage());
         }
     }
 
     @Override
     protected CommandResult executeInternal(CommandContext context) {
-        XReadArgs parsed;
+        XReadArgs inputArgs;
         try {
-            parsed = XReadArgs.parse(context);
+            inputArgs = XReadArgs.parse(context);
         } catch (IllegalArgumentException e) {
+            LOGGER.debug("Failed to parse XREAD arguments: {}", e.getMessage());
             return CommandResult.error(e.getMessage());
         }
 
-        XReadArgs resolvedArgs = parsed.withResolvedIds(context.getStorageService());
+        XReadArgs resolvedArgs = inputArgs.withResolvedIds(context.getStorageService());
 
         List<ByteBuffer> streamResponses = buildStreamResponses(resolvedArgs, context.getStorageService());
 
-        if (!streamResponses.isEmpty() || parsed.blockMs().isEmpty()) {
+        // Non-blocking or immediate return if responses available
+        if (!streamResponses.isEmpty() || inputArgs.blockMilliseconds().isEmpty()) {
             return CommandResult.success(
                     streamResponses.isEmpty()
                             ? ResponseBuilder.encode(ProtocolConstants.RESP_EMPTY_ARRAY)
                             : ResponseBuilder.arrayOfBuffers(streamResponses));
         }
 
-        var timeoutForBlocking = parsed.blockMs().flatMap(ms -> ms > 0 ? Optional.of(ms) : Optional.empty());
+        Optional<Long> blockTimeout = inputArgs.blockMilliseconds().filter(ms -> ms > 0);
 
         context.getServerContext().getBlockingManager().blockClientForStreams(
-                resolvedArgs.keys(),
-                resolvedArgs.ids(),
-                parsed.count(),
+                resolvedArgs.streamKeys(),
+                resolvedArgs.streamIds(),
+                inputArgs.count(),
                 context.getClientChannel(),
-                timeoutForBlocking);
+                blockTimeout);
+
+        LOGGER.trace("Client blocked for XREAD: keys={}, ids={}, timeout={}",
+                resolvedArgs.streamKeys(), resolvedArgs.streamIds(), blockTimeout.orElse(null));
 
         return CommandResult.async();
     }
 
-    private List<ByteBuffer> buildStreamResponses(XReadArgs parsed, StorageService storage) {
+    /**
+     * Builds RESP-encoded stream responses for the given XREAD arguments.
+     *
+     * @param xReadArgs parsed and resolved XREAD arguments
+     * @param storage   the storage service used to fetch stream entries
+     * @return RESP-encoded responses per stream, one buffer per stream with new
+     *         entries
+     */
+    private List<ByteBuffer> buildStreamResponses(XReadArgs xReadArgs, StorageService storage) {
         List<ByteBuffer> responses = new ArrayList<>();
 
-        for (int i = 0; i < parsed.keys().size(); i++) {
-            String key = parsed.keys().get(i);
-            String afterId = parsed.ids().get(i);
+        for (int index = 0; index < xReadArgs.streamKeys().size(); index++) {
+            String streamKey = xReadArgs.streamKeys().get(index);
+            String lastSeenId = xReadArgs.streamIds().get(index);
 
-            var entries = parsed.count().isPresent()
-                    ? storage.getStreamAfter(key, afterId, parsed.count().get())
-                    : storage.getStreamAfter(key, afterId, -1);
+            int fetchLimit = xReadArgs.count().orElse(DEFAULT_NO_LIMIT);
 
-            if (!entries.isEmpty()) {
+            var newEntries = storage.getStreamAfter(streamKey, lastSeenId, fetchLimit);
+
+            if (!newEntries.isEmpty()) {
                 responses.add(
                         ResponseBuilder.arrayOfBuffers(List.of(
-                                ResponseBuilder.bulkString(key),
-                                ResponseBuilder.streamEntries(entries,
-                                        e -> e.id(),
-                                        e -> e.fieldList()))));
+                                ResponseBuilder.bulkString(streamKey),
+                                ResponseBuilder.streamEntries(newEntries,
+                                        entry -> entry.entryId(),
+                                        entry -> entry.fields()))));
             }
         }
         return responses;

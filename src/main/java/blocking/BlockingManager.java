@@ -38,6 +38,11 @@ import storage.StorageService;
 public final class BlockingManager implements EventListener {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(BlockingManager.class);
+    
+    // Validation messages
+    private static final String NULL_ARGUMENT_MESSAGE = "Argument cannot be null";
+    private static final String INVALID_ARGUMENT_MESSAGE = "Invalid argument provided";
+
 
     // Core data structures with improved initial capacities
     private final Map<String, Queue<BlockedClient>> waitingClients = new ConcurrentHashMap<>(

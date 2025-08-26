@@ -4,71 +4,108 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import commands.context.CommandContext;
 import storage.StorageService;
 
+/**
+ * Represents parsed arguments for the XREAD command in Redis streams.
+ * Supports COUNT, BLOCK, and STREAMS options.
+ * Provides parsing and ID resolution utilities.
+ */
 public record XReadArgs(
-        Optional<Integer> count,
-        Optional<Long> blockMs,
-        List<String> keys,
-        List<String> ids) {
+    Optional<Integer> count,
+    Optional<Long> blockMilliseconds,
+    List<String> streamKeys,
+    List<String> streamIds) {
+
+    private static final Logger LOGGER = LoggerFactory.getLogger(XReadArgs.class);
+
+    private static final String ARG_COUNT = "COUNT";
+    private static final String ARG_BLOCK = "BLOCK";
+    private static final String ARG_STREAMS = "STREAMS";
+    private static final String STREAM_ID_LATEST = "$";
+    private static final String STREAM_ID_ZERO = "0-0";
+
+    /**
+     * Parses XREAD command arguments from the given context.
+     *
+     * @param context CommandContext containing the arguments.
+     * @return XReadArgs instance with parsed values.
+     * @throws IllegalArgumentException if arguments are invalid.
+     */
     public static XReadArgs parse(CommandContext context) {
-        int count = -1;
-        long blockMs = -1;
-        int i = 1;
+    int countValue = -1;
+    long blockValue = -1;
+    int currentIndex = 1;
 
-        while (i < context.getArgCount() && !context.getArg(i).equalsIgnoreCase("STREAMS")) {
-            switch (context.getArg(i).toUpperCase()) {
-                case "COUNT" -> {
-                    if (i + 1 >= context.getArgCount())
-                        throw new IllegalArgumentException("COUNT requires a value");
-                    count = Integer.parseInt(context.getArg(i + 1));
-                    i += 2;
-                }
-                case "BLOCK" -> {
-                    if (i + 1 >= context.getArgCount())
-                        throw new IllegalArgumentException("BLOCK requires a value");
-                    blockMs = Long.parseLong(context.getArg(i + 1));
-                    i += 2;
-                }
-                default -> throw new IllegalArgumentException(
-                        String.format("Unexpected token: %s", context.getArg(i)));
+    while (currentIndex < context.getArgCount() && !context.getArg(currentIndex).equalsIgnoreCase(ARG_STREAMS)) {
+        String argument = context.getArg(currentIndex).toUpperCase();
+        switch (argument) {
+        case ARG_COUNT -> {
+            if (currentIndex + 1 >= context.getArgCount()) {
+            throw new IllegalArgumentException("COUNT requires a value");
             }
+            countValue = Integer.parseInt(context.getArg(currentIndex + 1));
+            currentIndex += 2;
         }
-
-        if (i >= context.getArgCount() || !context.getArg(i).equalsIgnoreCase("STREAMS")) {
-            throw new IllegalArgumentException("Missing STREAMS keyword");
+        case ARG_BLOCK -> {
+            if (currentIndex + 1 >= context.getArgCount()) {
+            throw new IllegalArgumentException("BLOCK requires a value");
+            }
+            blockValue = Long.parseLong(context.getArg(currentIndex + 1));
+            currentIndex += 2;
         }
-        i++;
-
-        int remaining = context.getArgCount() - i;
-        if (remaining % 2 != 0) {
-            throw new IllegalArgumentException("Wrong number of arguments for XREAD STREAMS");
+        default -> throw new IllegalArgumentException(
+            String.format("Unexpected token: %s", context.getArg(currentIndex)));
         }
-
-        int half = remaining / 2;
-        List<String> keys = context.getSlice(i, i + half);
-        List<String> ids = context.getSlice(i + half, context.getArgCount());
-
-        return new XReadArgs(
-                count > 0 ? Optional.of(count) : Optional.empty(),
-                blockMs >= 0 ? Optional.of(blockMs) : Optional.empty(),
-                keys,
-                ids);
     }
 
+    if (currentIndex >= context.getArgCount() || !context.getArg(currentIndex).equalsIgnoreCase(ARG_STREAMS)) {
+        throw new IllegalArgumentException("Missing STREAMS keyword");
+    }
+    currentIndex++;
+
+    int remainingArguments = context.getArgCount() - currentIndex;
+    if (remainingArguments % 2 != 0) {
+        throw new IllegalArgumentException("Wrong number of arguments for XREAD STREAMS");
+    }
+
+    int numberOfKeys = remainingArguments / 2;
+    List<String> keys = context.getSlice(currentIndex, currentIndex + numberOfKeys);
+    List<String> ids = context.getSlice(currentIndex + numberOfKeys, context.getArgCount());
+
+    LOGGER.debug("Parsed XREAD args: count={}, blockMs={}, keys={}, ids={}",
+        countValue, blockValue, keys, ids);
+
+    return new XReadArgs(
+        countValue > 0 ? Optional.of(countValue) : Optional.empty(),
+        blockValue >= 0 ? Optional.of(blockValue) : Optional.empty(),
+        keys,
+        ids);
+    }
+
+    /**
+     * Resolves '$' IDs to the latest stream ID from storage.
+     *
+     * @param storage StorageService to fetch latest stream IDs.
+     * @return XReadArgs with resolved IDs.
+     */
     public XReadArgs withResolvedIds(StorageService storage) {
-        List<String> resolved = new ArrayList<>(ids.size());
-        for (int i = 0; i < keys.size(); i++) {
-            String key = keys.get(i);
-            String id = ids.get(i);
-            if ("$".equals(id)) {
-                Optional<String> last = storage.getLastStreamId(key);
-                resolved.add(last.orElse("0-0"));
-            } else {
-                resolved.add(id);
-            }
+    List<String> resolvedIds = new ArrayList<>(streamIds.size());
+    for (int i = 0; i < streamKeys.size(); i++) {
+        String key = streamKeys.get(i);
+        String id = streamIds.get(i);
+        if (STREAM_ID_LATEST.equals(id)) {
+        Optional<String> lastId = storage.getLastStreamId(key);
+        resolvedIds.add(lastId.orElse(STREAM_ID_ZERO));
+        } else {
+        resolvedIds.add(id);
         }
-        return new XReadArgs(count, blockMs, keys, List.copyOf(resolved));
+    }
+    LOGGER.trace("Resolved stream IDs: {}", resolvedIds);
+    return new XReadArgs(count, blockMilliseconds, streamKeys, List.copyOf(resolvedIds));
     }
 }

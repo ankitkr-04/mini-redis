@@ -10,8 +10,17 @@ import java.util.concurrent.atomic.AtomicLong;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+/**
+ * Maintains the state for master-replica synchronization in the replication
+ * module.
+ * Tracks role, replication IDs, offsets, backlog, and handshake status.
+ */
 public final class ReplicationState {
-    private static final Logger log = LoggerFactory.getLogger(ReplicationState.class);
+    private static final Logger LOGGER = LoggerFactory.getLogger(ReplicationState.class);
+
+    // Constants
+    private static final int REPLICATION_ID_LENGTH = 20;
+    private static final String UNKNOWN_REPLICATION_ID = "?";
 
     public enum Role {
         MASTER, SLAVE
@@ -21,6 +30,7 @@ public final class ReplicationState {
         NOT_STARTED, IN_PROGRESS, COMPLETED
     }
 
+    // State fields
     private volatile Role role;
     private volatile String masterReplicationId;
     private final AtomicInteger connectedSlaves = new AtomicInteger(0);
@@ -33,16 +43,28 @@ public final class ReplicationState {
     private final int masterPort;
     private volatile HandshakeStatus handshakeStatus = HandshakeStatus.NOT_STARTED;
 
+    /**
+     * Initializes the replication state.
+     *
+     * @param isReplica   true if this node is a replica, false if master
+     * @param masterHost  host of the master (if replica)
+     * @param masterPort  port of the master (if replica)
+     * @param backlogSize size of the replication backlog
+     */
     public ReplicationState(boolean isReplica, String masterHost, int masterPort, long backlogSize) {
         this.role = isReplica ? Role.SLAVE : Role.MASTER;
-        this.masterReplicationId = isReplica ? "?" : generateReplicationId();
+        this.masterReplicationId = isReplica ? UNKNOWN_REPLICATION_ID : generateReplicationId();
         this.masterHost = masterHost;
         this.masterPort = masterPort;
         this.backlogSize = backlogSize;
 
-        log.info("Initialized replication state - Role: {}, Master: {}:{}", role, masterHost, masterPort);
+        LOGGER.info("ReplicationState initialized: role={}, masterHost={}, masterPort={}", role, masterHost,
+                masterPort);
     }
 
+    /**
+     * Returns a map of replication info for monitoring or debugging.
+     */
     public Map<String, String> toInfoMap() {
         Map<String, String> info = new LinkedHashMap<>();
         info.put("role", role.name().toLowerCase());
@@ -59,7 +81,6 @@ public final class ReplicationState {
         return info;
     }
 
-    // Getters
     public Role getRole() {
         return role;
     }
@@ -92,41 +113,54 @@ public final class ReplicationState {
         return handshakeStatus == HandshakeStatus.COMPLETED;
     }
 
-    // Setters
-    public void setMasterReplicationId(String id) {
-        this.masterReplicationId = id;
+    public void setMasterReplicationId(String replicationId) {
+        this.masterReplicationId = replicationId;
     }
 
+    /**
+     * Updates the handshake status and logs completion.
+     */
     public void setHandshakeStatus(HandshakeStatus status) {
         this.handshakeStatus = status;
         if (status == HandshakeStatus.COMPLETED) {
-            log.info("Replication handshake completed successfully");
+            LOGGER.info("Replication handshake completed");
         }
     }
 
-    // Operations
-    public void incrementSlaves() {
-        int current = connectedSlaves.incrementAndGet();
-        log.debug("Incremented slave count to: {}", current);
+    /**
+     * Increments the count of connected slaves.
+     */
+    public void incrementConnectedSlaves() {
+        int count = connectedSlaves.incrementAndGet();
+        LOGGER.debug("Connected slaves incremented: {}", count);
     }
 
-    public void decrementSlaves() {
-        int current = connectedSlaves.decrementAndGet();
-        log.debug("Decremented slave count to: {}", current);
+    /**
+     * Decrements the count of connected slaves.
+     */
+    public void decrementConnectedSlaves() {
+        int count = connectedSlaves.decrementAndGet();
+        LOGGER.debug("Connected slaves decremented: {}", count);
     }
 
+    /**
+     * Increments the replication offset by the specified number of bytes.
+     */
     public void incrementReplicationOffset(long bytes) {
-        long newOffset = masterReplicationOffset.addAndGet(bytes);
-        log.trace("Incremented replication offset by {} to {}", bytes, newOffset);
+        long offset = masterReplicationOffset.addAndGet(bytes);
+        LOGGER.trace("Replication offset incremented by {}: {}", bytes, offset);
     }
 
+    /**
+     * Generates a random replication ID.
+     */
     private static String generateReplicationId() {
-        byte[] bytes = new byte[20];
-        new SecureRandom().nextBytes(bytes);
-        StringBuilder sb = new StringBuilder(40);
-        for (byte b : bytes) {
-            sb.append(String.format("%02x", b));
+        byte[] randomBytes = new byte[REPLICATION_ID_LENGTH];
+        new SecureRandom().nextBytes(randomBytes);
+        StringBuilder hexBuilder = new StringBuilder(REPLICATION_ID_LENGTH * 2);
+        for (byte b : randomBytes) {
+            hexBuilder.append(String.format("%02x", b));
         }
-        return sb.toString();
+        return hexBuilder.toString();
     }
 }

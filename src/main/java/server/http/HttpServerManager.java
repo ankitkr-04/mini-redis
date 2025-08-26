@@ -4,6 +4,7 @@ import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 import org.slf4j.Logger;
@@ -15,90 +16,109 @@ import server.ServerContext;
 
 /**
  * Manages the HTTP server for exposing metrics and other endpoints.
- * Provides an extensible framework for registering HTTP endpoints.
+ * Allows registration of custom HTTP endpoints.
+ * 
+ * @author Ankit Kumar
+ * @version 1.0
  */
 public final class HttpServerManager {
-    private static final Logger log = LoggerFactory.getLogger(HttpServerManager.class);
+    private static final Logger LOGGER = LoggerFactory.getLogger(HttpServerManager.class);
+
+    private static final int DEFAULT_THREAD_POOL_SIZE = 4;
 
     private final ServerContext serverContext;
-    private final int port;
-    private final String bindAddress;
-    private final List<HttpEndpoint> endpoints;
+    private final int serverPort;
+    private final String serverBindAddress;
+    private final List<HttpEndpoint> registeredEndpoints;
     private HttpServer httpServer;
+    private ExecutorService executorService;
 
-    public HttpServerManager(ServerContext serverContext, String bindAddress, int port) {
+    /**
+     * Constructs an HttpServerManager with the given context, bind address, and
+     * port.
+     * Registers default endpoints for metrics, health, and info.
+     *
+     * @param serverContext     the server context
+     * @param serverBindAddress the address to bind the HTTP server
+     * @param serverPort        the port to bind the HTTP server
+     */
+    public HttpServerManager(ServerContext serverContext, String serverBindAddress, int serverPort) {
         this.serverContext = serverContext;
-        this.bindAddress = bindAddress;
-        this.port = port;
-        this.endpoints = new ArrayList<>();
-
-        // Register default endpoints
+        this.serverBindAddress = serverBindAddress;
+        this.serverPort = serverPort;
+        this.registeredEndpoints = new ArrayList<>();
         registerDefaultEndpoints();
     }
 
     /**
-     * Register a new HTTP endpoint.
-     * 
+     * Registers a new HTTP endpoint. If the server is running, registers it
+     * immediately.
+     *
      * @param endpoint the endpoint to register
      */
     public void registerEndpoint(HttpEndpoint endpoint) {
-        endpoints.add(endpoint);
+        registeredEndpoints.add(endpoint);
         if (httpServer != null) {
-            // Server is already running, register the endpoint immediately
-            registerEndpointWithServer(endpoint);
+            addEndpointToServer(endpoint);
         }
     }
 
     /**
-     * Start the HTTP server.
-     * 
+     * Starts the HTTP server and registers all endpoints.
+     *
      * @throws IOException if the server cannot be started
      */
     public void start() throws IOException {
         if (httpServer != null) {
-            log.warn("HTTP server is already running");
+            LOGGER.info("HTTP server is already running");
             return;
         }
 
-        httpServer = HttpServer.create(new InetSocketAddress(bindAddress, port), 0);
+        httpServer = HttpServer.create(new InetSocketAddress(serverBindAddress, serverPort), 0);
 
-        // Register all endpoints
-        for (HttpEndpoint endpoint : endpoints) {
-            registerEndpointWithServer(endpoint);
+        for (HttpEndpoint endpoint : registeredEndpoints) {
+            addEndpointToServer(endpoint);
         }
 
-        // Use a thread pool executor
-        httpServer.setExecutor(Executors.newFixedThreadPool(4));
+        executorService = Executors.newFixedThreadPool(DEFAULT_THREAD_POOL_SIZE);
+        httpServer.setExecutor(executorService);
         httpServer.start();
 
-        log.info("HTTP server started on {}:{}", bindAddress, port);
+        LOGGER.info("HTTP server started on {}:{}", serverBindAddress, serverPort);
     }
 
     /**
-     * Stop the HTTP server.
+     * Stops the HTTP server.
      */
     public void stop() {
         if (httpServer != null) {
             httpServer.stop(0);
             httpServer = null;
-            log.info("HTTP server stopped");
+            if (executorService != null) {
+                executorService.shutdownNow();
+                executorService = null;
+            }
+            LOGGER.info("HTTP server stopped");
         }
     }
 
+    /**
+     * Registers the default endpoints: metrics, health, and info.
+     */
     private void registerDefaultEndpoints() {
-        // Register metrics endpoint
         registerEndpoint(new MetricsEndpoint(serverContext));
-
-        // Register health check endpoint
         registerEndpoint(new HealthEndpoint(serverContext));
-
-        // Register info endpoint
         registerEndpoint(new InfoEndpoint(serverContext));
     }
 
-    private void registerEndpointWithServer(HttpEndpoint endpoint) {
+    /**
+     * Adds an endpoint to the running HTTP server.
+     *
+     * @param endpoint the endpoint to add
+     */
+    private void addEndpointToServer(HttpEndpoint endpoint) {
         httpServer.createContext(endpoint.getPath(), endpoint::handle);
-        log.debug("Registered HTTP endpoint: {} (methods: {})",
+        LOGGER.debug("Registered HTTP endpoint: {} (methods: {})",
                 endpoint.getPath(), String.join(", ", endpoint.getSupportedMethods()));
     }
 }

@@ -2,6 +2,10 @@ package commands.impl.transaction;
 
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
+import java.util.List;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import commands.base.WriteCommand;
 import commands.context.CommandContext;
@@ -12,69 +16,127 @@ import commands.validation.ValidationResult;
 import config.ProtocolConstants;
 import errors.ErrorCode;
 import protocol.ResponseBuilder;
+import transaction.TransactionState;
+import transaction.TransactionState.QueuedCommand;
 
+/**
+ * Implements the Redis EXEC command.
+ *
+ * 
+ * @author Ankit Kumar
+ * @version 1.0
+ */
 public final class ExecCommand extends WriteCommand {
+
+    private static final Logger LOGGER = LoggerFactory.getLogger(ExecCommand.class);
+
+    private static final String COMMAND_NAME = "EXEC";
+
     @Override
     public String getName() {
-        return "EXEC";
+        return COMMAND_NAME;
     }
 
     @Override
     protected ValidationResult performValidation(CommandContext context) {
-        return CommandValidator.validateArgCount(context, 1);
+        return CommandValidator.argCount(1).validate(context);
     }
 
     @Override
     protected CommandResult executeInternal(CommandContext context) {
         var transactionManager = context.getServerContext().getTransactionManager();
-        var state = transactionManager.getOrCreateState(context.getClientChannel());
+        var clientTransactionState = transactionManager.getOrCreateState(context.getClientChannel());
 
-        if (!state.isInTransaction())
+        if (!clientTransactionState.isInTransaction()) {
             return CommandResult.error(ErrorCode.EXEC_WITHOUT_MULTI.getMessage());
-
-        // Check if any watched keys have been modified (optimistic locking)
-        if (state.isTransactionInvalid()) {
-            state.clearTransaction();
-            state.clearWatchedKeys();
-            return CommandResult.success(ResponseBuilder.encode(ProtocolConstants.RESP_NULL_ARRAY));
         }
 
-        var queuedCommands = state.getQueuedCommands();
-        state.clearTransaction();
-        state.clearWatchedKeys(); // Clear watched keys after successful execution
+        if (clientTransactionState.isTransactionInvalid()) {
+            return handleAbortedTransaction(clientTransactionState);
+        }
 
-        if (queuedCommands.isEmpty())
+        var queuedCommands = clientTransactionState.getQueuedCommands();
+        clientTransactionState.clearTransaction();
+        clientTransactionState.clearWatchedKeys();
+
+        if (queuedCommands.isEmpty()) {
             return CommandResult.success(ResponseBuilder.encode(ProtocolConstants.RESP_EMPTY_ARRAY));
-
-        var results = new ArrayList<ByteBuffer>();
-        for (var queued : queuedCommands) {
-            CommandResult result = queued.command().execute(new CommandContext(queued.operation(), queued.rawArgs(),
-                    context.getClientChannel(), context.getStorageService(), context.getServerContext()));
-
-            // Log successful write commands to AOF
-            // Exclude pub/sub commands, replication commands, and other non-persistent
-            // commands
-            if (result instanceof CommandResult.Success && shouldLogToAof(queued.command()) &&
-                    context.getServerContext().isAofMode()) {
-                var aofRepo = context.getServerContext().getAofRepository();
-                if (aofRepo != null) {
-                    aofRepo.appendCommand(queued.rawArgs());
-                }
-            }
-
-            results.add(switch (result) {
-                case CommandResult.Success s -> s.response();
-                case CommandResult.Error e -> ResponseBuilder.error(e.message());
-                case CommandResult.Async _ -> ResponseBuilder
-                        .error(ErrorCode.BLOCKING_IN_TRANSACTION.getMessage());
-            });
         }
+
+        List<ByteBuffer> results = executeQueuedCommands(queuedCommands, context);
+
+        LOGGER.trace("EXEC executed {} queued commands for client={}",
+                queuedCommands.size(), context.getClientChannel());
+
         return CommandResult.success(ResponseBuilder.arrayOfBuffers(results));
     }
 
+    /**
+     * Handles case where watched keys were modified and transaction must be
+     * aborted.
+     */
+    private CommandResult handleAbortedTransaction(TransactionState clientTransactionState) {
+        clientTransactionState.clearTransaction();
+        clientTransactionState.clearWatchedKeys();
+        return CommandResult.success(ResponseBuilder.encode(ProtocolConstants.RESP_NULL_ARRAY));
+    }
+
+    /**
+     * Executes queued commands and collects their responses.
+     */
+    private List<ByteBuffer> executeQueuedCommands(List<QueuedCommand> queuedCommands, CommandContext context) {
+        List<ByteBuffer> results = new ArrayList<>();
+
+        for (var queuedCommand : queuedCommands) {
+            CommandResult result = executeQueuedCommand(queuedCommand, context);
+            results.add(mapResultToResponse(result));
+        }
+
+        return results;
+    }
+
+    /**
+     * Executes a single queued command.
+     */
+    private CommandResult executeQueuedCommand(QueuedCommand queuedCommand, CommandContext context) {
+        CommandContext commandContext = new CommandContext(
+                queuedCommand.operation(),
+                queuedCommand.rawArgs(),
+                context.getClientChannel(),
+                context.getStorageService(),
+                context.getServerContext());
+
+        CommandResult result = queuedCommand.command().execute(commandContext);
+
+        if (shouldLogToAof(queuedCommand.command())
+                && result instanceof CommandResult.Success
+                && context.getServerContext().isAofMode()) {
+            var aofRepository = context.getServerContext().getAofRepository();
+            if (aofRepository != null) {
+                aofRepository.appendCommand(queuedCommand.rawArgs());
+            }
+        }
+
+        return result;
+    }
+
+    /**
+     * Converts a CommandResult into RESP-encoded ByteBuffer response.
+     */
+    private ByteBuffer mapResultToResponse(CommandResult result) {
+        return switch (result) {
+            case CommandResult.Success success -> success.response();
+            case CommandResult.Error error -> ResponseBuilder.error(error.message());
+            case CommandResult.Async _ -> ResponseBuilder.error(ErrorCode.BLOCKING_IN_TRANSACTION.getMessage());
+        };
+    }
+
+    /**
+     * Determines whether a command should be persisted to AOF.
+     */
     private boolean shouldLogToAof(Command command) {
-        return command.isWriteCommand() &&
-                !command.isPubSubCommand() &&
-                !command.isReplicationCommand();
+        return command.isWriteCommand()
+                && !command.isPubSubCommand()
+                && !command.isReplicationCommand();
     }
 }

@@ -2,6 +2,9 @@ package commands.impl.pubsub;
 
 import java.util.List;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import commands.base.PubSubCommand;
 import commands.context.CommandContext;
 import commands.result.CommandResult;
@@ -9,42 +12,57 @@ import commands.validation.CommandValidator;
 import commands.validation.ValidationResult;
 import protocol.ResponseBuilder;
 
+/**
+ * Handles the Redis SUBSCRIBE and PSUBSCRIBE commands.
+ * Subscribes the client to one or more channels or patterns and sends an
+ * acknowledgment for each.
+ */
 public class SubscribeCommand extends PubSubCommand {
+
+    private static final Logger LOGGER = LoggerFactory.getLogger(SubscribeCommand.class);
+
+    private static final String COMMAND_NAME = "SUBSCRIBE";
+    private static final String PATTERN_COMMAND_NAME = "PSUBSCRIBE";
+    private static final String SUBSCRIBE_RESPONSE_TYPE = "subscribe";
+    private static final String PSUBSCRIBE_RESPONSE_TYPE = "psubscribe";
+    private static final int MIN_ARGUMENTS = 2;
 
     @Override
     public String getName() {
-        return "SUBSCRIBE";
+        return COMMAND_NAME;
     }
 
     @Override
     protected ValidationResult performValidation(CommandContext context) {
-        // need at least command name + 1 channel/pattern
-        return CommandValidator.validateMinArgs(context, 2);
+        // Requires at least command name and one channel/pattern
+        return CommandValidator.minArgs(MIN_ARGUMENTS).validate(context);
     }
 
     @Override
     protected CommandResult executeInternal(CommandContext context) {
-        boolean isPatternBased = "PSUBSCRIBE".equalsIgnoreCase(context.getOperation());
-        List<String> targets = context.getSlice(1, context.getArgCount());
+        boolean isPatternSubscribe = PATTERN_COMMAND_NAME.equalsIgnoreCase(context.getOperation());
+        List<String> channelsOrPatterns = context.getSlice(1, context.getArgCount());
 
-        var manager = context.getServerContext().getPubSubManager();
-        var client = context.getClientChannel();
+        var pubSubManager = context.getServerContext().getPubSubManager();
+        var clientChannel = context.getClientChannel();
 
-        if (isPatternBased) {
-            manager.psubscribe(client, targets);
+        if (isPatternSubscribe) {
+            pubSubManager.psubscribe(clientChannel, channelsOrPatterns);
+            LOGGER.debug("Client {} psubscribed to patterns: {}", clientChannel, channelsOrPatterns);
         } else {
-            manager.subscribe(client, targets);
+            pubSubManager.subscribe(clientChannel, channelsOrPatterns);
+            LOGGER.debug("Client {} subscribed to channels: {}", clientChannel, channelsOrPatterns);
         }
 
-        // Acknowledge each subscription separately
-        for (String target : targets) {
-            String kind = isPatternBased ? "psubscribe" : "subscribe";
-            int count = manager.subscriptionCount(client);
+        // Send acknowledgment for each subscription
+        for (String channelOrPattern : channelsOrPatterns) {
+            String responseType = isPatternSubscribe ? PSUBSCRIBE_RESPONSE_TYPE : SUBSCRIBE_RESPONSE_TYPE;
+            int subscriptionCount = pubSubManager.subscriptionCount(clientChannel);
 
             var ack = ResponseBuilder.arrayOfBuffers(List.of(
-                    ResponseBuilder.bulkString(kind),
-                    ResponseBuilder.bulkString(target),
-                    ResponseBuilder.integer(count)));
+                    ResponseBuilder.bulkString(responseType),
+                    ResponseBuilder.bulkString(channelOrPattern),
+                    ResponseBuilder.integer(subscriptionCount)));
 
             return CommandResult.success(ack);
         }

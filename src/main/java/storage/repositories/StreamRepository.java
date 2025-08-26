@@ -5,6 +5,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentNavigableMap;
 import java.util.concurrent.ConcurrentSkipListMap;
+
 import errors.ErrorCode;
 import storage.Repository;
 import storage.expiry.ExpiryPolicy;
@@ -14,6 +15,18 @@ import storage.types.streams.StreamEntry;
 import storage.types.streams.StreamRangeEntry;
 import storage.types.streams.StreamValue;
 import utils.StreamIdComparator;
+
+/**
+ * StreamRepository implementation.
+ *
+ * <p>
+ * Storage layer implementation for data persistence.
+ * </p>
+ *
+ * @author Ankit Kumar
+ * @version 1.0
+ * @since 1.0
+ */
 
 public final class StreamRepository
         implements Repository<ConcurrentNavigableMap<String, StreamEntry>> {
@@ -53,8 +66,8 @@ public final class StreamRepository
     public ConcurrentNavigableMap<String, StreamEntry> getOrCreate(String key,
             ExpiryPolicy expiry) {
         return get(key).orElseGet(() -> {
-            ConcurrentNavigableMap<String, StreamEntry> newStream =
-                    new ConcurrentSkipListMap<>(StreamIdComparator.INSTANCE);
+            ConcurrentNavigableMap<String, StreamEntry> newStream = new ConcurrentSkipListMap<>(
+                    StreamIdComparator.INSTANCE);
             put(key, newStream, expiry);
             return newStream;
         });

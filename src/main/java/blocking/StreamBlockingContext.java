@@ -106,7 +106,7 @@ public record StreamBlockingContext(
             if (!entries.isEmpty()) {
                 final ByteBuffer streamResponse = ResponseBuilder.arrayOfBuffers(List.of(
                         ResponseBuilder.bulkString(key),
-                        ResponseBuilder.streamEntries(entries, e -> e.id(), e -> e.fieldList())));
+                        ResponseBuilder.streamEntries(entries, e -> e.entryId(), e -> e.fields())));
                 responses.add(streamResponse);
             }
         }

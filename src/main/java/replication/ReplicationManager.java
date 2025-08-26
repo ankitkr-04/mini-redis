@@ -15,14 +15,23 @@ import org.slf4j.LoggerFactory;
 import protocol.ResponseBuilder;
 import server.ServerContext;
 
+/**
+ * Manages master-replica synchronization and replication state.
+ * Handles replica registration, command propagation, offset tracking,
+ * and pending WAIT command logic.
+ */
 public final class ReplicationManager {
-    private static final Logger log = LoggerFactory.getLogger(ReplicationManager.class);
+    private static final Logger LOGGER = LoggerFactory.getLogger(ReplicationManager.class);
 
-    private static record PendingWait(SocketChannel channel, int targetReplicas, long targetOffset, long endTime) {
+    // Command for requesting replica acknowledgements
+    private static final String[] REPLCONF_GETACK_COMMAND = { "REPLCONF", "GETACK", "*" };
+
+    // Pending WAIT request from a client
+    private static record PendingWait(SocketChannel clientChannel, int requiredReplicas, long requiredOffset,
+            long deadlineMillis) {
     }
 
     private final List<PendingWait> pendingWaits = new CopyOnWriteArrayList<>();
-
     private final ConcurrentHashMap<SocketChannel, AtomicLong> replicaOffsets = new ConcurrentHashMap<>();
     private final ReplicationState replicationState;
     private final ServerContext serverContext;
@@ -32,59 +41,85 @@ public final class ReplicationManager {
         this.serverContext = serverContext;
     }
 
-    public void addReplica(SocketChannel channel) {
-        replicaOffsets.put(channel, new AtomicLong(0));
-        replicationState.incrementSlaves();
+    /**
+     * Registers a new replica connection.
+     * 
+     * @param replicaChannel the replica's socket channel
+     */
+    public void addReplica(SocketChannel replicaChannel) {
+        replicaOffsets.put(replicaChannel, new AtomicLong(0));
+        replicationState.incrementConnectedSlaves();
         serverContext.getMetricsCollector().incrementReplicaConnections();
-        log.info("Added replica: {}, total: {}", getChannelInfo(channel), replicaOffsets.size());
+        LOGGER.info("Replica added: {}", getChannelInfo(replicaChannel));
     }
 
-    public void removeReplica(SocketChannel channel) {
-        if (replicaOffsets.remove(channel) != null) {
-            replicationState.decrementSlaves();
+    /**
+     * Removes a replica connection.
+     * 
+     * @param replicaChannel the replica's socket channel
+     */
+    public void removeReplica(SocketChannel replicaChannel) {
+        if (replicaOffsets.remove(replicaChannel) != null) {
+            replicationState.decrementConnectedSlaves();
             serverContext.getMetricsCollector().decrementReplicaConnections();
-            log.info("Removed replica: {}, total: {}", getChannelInfo(channel), replicaOffsets.size());
+            LOGGER.info("Replica removed: {}", getChannelInfo(replicaChannel));
         }
     }
 
+    /**
+     * Checks if any replicas are connected.
+     * 
+     * @return true if at least one replica is connected
+     */
     public boolean hasConnectedReplicas() {
         return !replicaOffsets.isEmpty();
     }
 
+    /**
+     * Returns the number of connected replicas.
+     */
     public int getConnectedReplicasCount() {
         return replicaOffsets.size();
     }
 
+    /**
+     * Propagates a command to all connected replicas.
+     * Removes replicas that fail to receive the command.
+     * 
+     * @param commandArgs the command to propagate
+     */
     public void propagateCommand(String[] commandArgs) {
         if (replicaOffsets.isEmpty())
             return;
 
-        List<SocketChannel> failedChannels = replicaOffsets.keySet().parallelStream()
-                .filter(channel -> !sendCommandToReplica(channel, commandArgs))
+        List<SocketChannel> failedReplicas = replicaOffsets.keySet().parallelStream()
+                .filter(replica -> !sendCommandToReplica(replica, commandArgs))
                 .toList();
 
-        failedChannels.forEach(this::removeReplica);
+        failedReplicas.forEach(this::removeReplica);
         replicationState.incrementReplicationOffset(ReplicationProtocol.calculateCommandSize(commandArgs));
         serverContext.getMetricsCollector().incrementReplicationCommandsSent();
     }
 
-    public void updateReplicaOffset(SocketChannel channel, long offset) {
-        AtomicLong replicaOffset = replicaOffsets.get(channel);
+    /**
+     * Updates the replication offset for a replica.
+     * 
+     * @param replicaChannel the replica's socket channel
+     * @param offset         the new offset
+     */
+    public void updateReplicaOffset(SocketChannel replicaChannel, long offset) {
+        AtomicLong replicaOffset = replicaOffsets.get(replicaChannel);
         if (replicaOffset != null) {
-            long oldOffset = replicaOffset.get();
             replicaOffset.set(offset);
-            log.info("Updated replica offset for {}: {} -> {}", getChannelInfo(channel), oldOffset, offset);
-        } else {
-            log.warn("No replica offset found for channel: {}", getChannelInfo(channel));
         }
     }
 
-    private boolean sendCommandToReplica(SocketChannel channel, String[] commandArgs) {
+    private boolean sendCommandToReplica(SocketChannel replicaChannel, String[] commandArgs) {
         try {
-            ReplicationProtocol.sendCommand(channel, commandArgs);
+            ReplicationProtocol.sendCommand(replicaChannel, commandArgs);
             return true;
         } catch (IOException e) {
-            log.warn("Failed to send command to replica {}: {}", getChannelInfo(channel), e.getMessage());
+            LOGGER.debug("Failed to send command to replica {}: {}", getChannelInfo(replicaChannel), e.getMessage());
             return false;
         }
     }
@@ -97,73 +132,89 @@ public final class ReplicationManager {
         }
     }
 
-    // Wait for replication to specified number of replicas at given offset or
-    // timeout
-    public int getSyncReplicasCount(long targetOffset) {
-        int count = (int) replicaOffsets.values().stream()
-                .filter(offset -> offset.get() >= targetOffset)
+    /**
+     * Returns the number of replicas that have acknowledged at least the given
+     * offset.
+     * 
+     * @param requiredOffset the offset to check
+     */
+    public int getSyncReplicasCount(long requiredOffset) {
+        return (int) replicaOffsets.values().stream()
+                .filter(offset -> offset.get() >= requiredOffset)
                 .count();
-        log.info("getSyncReplicasCount({}): {} replicas synced. Current offsets: {}",
-                targetOffset, count,
-                replicaOffsets.entrySet().stream()
-                        .collect(java.util.stream.Collectors.toMap(
-                                e -> getChannelInfo(e.getKey()),
-                                e -> e.getValue().get())));
-        return count;
     }
 
+    /**
+     * Sends REPLCONF GETACK to all replicas to request acknowledgement.
+     */
     public void sendGetAckToAllReplicas() {
-        String[] command = new String[] { "REPLCONF", "GETACK", "*" };
-        replicaOffsets.keySet().forEach(channel -> {
+        replicaOffsets.keySet().forEach(replica -> {
             try {
-                ReplicationProtocol.sendCommand(channel, command);
+                ReplicationProtocol.sendCommand(replica, REPLCONF_GETACK_COMMAND);
             } catch (IOException e) {
-                log.warn("Failed to send GETACK to replica {}: {}", getChannelInfo(channel), e.getMessage());
+                LOGGER.debug("Failed to send GETACK to replica {}: {}", getChannelInfo(replica), e.getMessage());
             }
         });
     }
 
-    public void addPendingWait(SocketChannel channel, int targetReplicas, long targetOffset, long timeoutMillis) {
-        long endTime = System.currentTimeMillis() + timeoutMillis;
-        pendingWaits.add(new PendingWait(channel, targetReplicas, targetOffset, endTime));
+    /**
+     * Adds a pending WAIT request for a client.
+     * 
+     * @param clientChannel    the client's socket channel
+     * @param requiredReplicas number of replicas to wait for
+     * @param requiredOffset   offset to wait for
+     * @param timeoutMillis    timeout in milliseconds
+     */
+    public void addPendingWait(SocketChannel clientChannel, int requiredReplicas, long requiredOffset,
+            long timeoutMillis) {
+        long deadlineMillis = System.currentTimeMillis() + timeoutMillis;
+        pendingWaits.add(new PendingWait(clientChannel, requiredReplicas, requiredOffset, deadlineMillis));
     }
 
-    public void reemovePendingWait(SocketChannel client) {
-        pendingWaits.removeIf(pw -> pw.channel == client);
+    /**
+     * Removes any pending WAIT requests for a client.
+     * 
+     * @param clientChannel the client's socket channel
+     */
+    public void removePendingWait(SocketChannel clientChannel) {
+        pendingWaits.removeIf(wait -> wait.clientChannel == clientChannel);
     }
 
+    /**
+     * Checks all pending WAIT requests and responds to clients if satisfied or
+     * timed out.
+     */
     public void checkPendingWaits() {
-        long now = Instant.now().toEpochMilli();
-        List<PendingWait> toRemove = new ArrayList<>();
+        long nowMillis = Instant.now().toEpochMilli();
+        List<PendingWait> completedWaits = new ArrayList<>();
 
-        for (PendingWait pw : pendingWaits) {
-            if (now >= pw.endTime) {
-                log.info("Pending wait timed out for channel: {}", getChannelInfo(pw.channel));
-                sendCurrentCount(pw.channel, pw.targetReplicas, pw.targetOffset);
-                toRemove.add(pw);
-                continue;
-            }
+        for (PendingWait wait : pendingWaits) {
+            boolean timedOut = nowMillis >= wait.deadlineMillis;
+            int syncedReplicas = getSyncReplicasCount(wait.requiredOffset);
+            boolean satisfied = syncedReplicas >= wait.requiredReplicas;
 
-            int syncedReplicas = getSyncReplicasCount(pw.targetOffset);
-            if (syncedReplicas >= pw.targetReplicas) {
-                log.info("Pending wait satisfied for channel: {}, synced replicas: {}",
-                        getChannelInfo(pw.channel), syncedReplicas);
-                sendCurrentCount(pw.channel, pw.targetReplicas, pw.targetOffset);
-                toRemove.add(pw);
+            if (timedOut || satisfied) {
+                sendCurrentCount(wait.clientChannel, wait.requiredReplicas, wait.requiredOffset);
+                completedWaits.add(wait);
             }
         }
-
-        // Remove completed waits
-        pendingWaits.removeAll(toRemove);
+        pendingWaits.removeAll(completedWaits);
     }
 
-    public void sendCurrentCount(SocketChannel channel, int targetReplicas, long targetOffset) {
-        int syncedReplicas = getSyncReplicasCount(targetOffset);
+    /**
+     * Sends the current number of synced replicas to the client.
+     * 
+     * @param clientChannel    the client's socket channel
+     * @param requiredReplicas number of replicas requested
+     * @param requiredOffset   offset requested
+     */
+    public void sendCurrentCount(SocketChannel clientChannel, int requiredReplicas, long requiredOffset) {
+        int syncedReplicas = getSyncReplicasCount(requiredOffset);
         try {
-            ReplicationProtocol.sendResponse(channel, ResponseBuilder.integer(syncedReplicas));
+            ReplicationProtocol.sendResponse(clientChannel, ResponseBuilder.integer(syncedReplicas));
         } catch (IOException e) {
-            log.warn("Failed to send current count to channel {}: {}", getChannelInfo(channel), e.getMessage());
+            LOGGER.debug("Failed to send current count to client {}: {}", getChannelInfo(clientChannel),
+                    e.getMessage());
         }
     }
-
 }

@@ -18,13 +18,29 @@ import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 
 /**
  * Central metrics collector for Redis server implementation.
+ * 
+ * <p>
  * Collects and tracks various metrics including server-wide, command-specific,
  * storage, replication, pub/sub, transaction, and persistence metrics.
- * 
  * Enhanced to be compatible with Redis Enterprise Software metrics.
+ * </p>
+ * 
+ * <p>
+ * This collector uses Micrometer for metrics collection and provides
+ * Redis-compatible metric names and formats for monitoring integration.
+ * </p>
+ * 
+ * @author Ankit Kumar
+ * @version 1.0
+ * @since 1.0
  */
 public final class MetricsCollector {
-    private static final Logger log = LoggerFactory.getLogger(MetricsCollector.class);
+
+    /** Logger instance for this class */
+    private static final Logger LOGGER = LoggerFactory.getLogger(MetricsCollector.class);
+
+    /** Initial capacity for command-specific metric maps */
+    private static final int INITIAL_COMMAND_MAP_CAPACITY = 64;
 
     private final MeterRegistry meterRegistry;
     private final Instant startTime;
@@ -52,9 +68,9 @@ public final class MetricsCollector {
     private final AtomicLong memoryUsage = new AtomicLong(0);
 
     // Command metrics (detailed)
-    private final Map<String, Counter> commandCounters = new ConcurrentHashMap<>();
-    private final Map<String, Timer> commandTimers = new ConcurrentHashMap<>();
-    private final Map<String, Counter> commandErrors = new ConcurrentHashMap<>();
+    private final Map<String, Counter> commandCounters = new ConcurrentHashMap<>(INITIAL_COMMAND_MAP_CAPACITY);
+    private final Map<String, Timer> commandTimers = new ConcurrentHashMap<>(INITIAL_COMMAND_MAP_CAPACITY);
+    private final Map<String, Counter> commandErrors = new ConcurrentHashMap<>(INITIAL_COMMAND_MAP_CAPACITY);
 
     // Key Type Storage metrics (Redis Enterprise style)
     private final AtomicInteger totalKeys = new AtomicInteger(0);
@@ -269,7 +285,7 @@ public final class MetricsCollector {
         // Register gauges for dynamic metrics
         registerGauges();
 
-        log.info("MetricsCollector initialized at {}", startTime);
+        LOGGER.info("MetricsCollector initialized at {}", startTime);
     }
 
     private void registerGauges() {
@@ -733,7 +749,6 @@ public final class MetricsCollector {
         blockedClients.decrementAndGet();
     }
 
-    // Getters for Redis Enterprise compatible metrics
     public int getTotalKeys() {
         return totalKeys.get();
     }

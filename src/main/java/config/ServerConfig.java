@@ -1,5 +1,15 @@
 package config;
 
+/**
+ *
+ * Holds server configuration constants.
+ * <p>
+ * This includes default port, buffer sizes, threading configurations,
+ * connection limits, memory settings, replication defaults, and other
+ * miscellaneous settings.
+ * </p>
+ */
+
 public final class ServerConfig {
     private ServerConfig() {
     } // Utility class

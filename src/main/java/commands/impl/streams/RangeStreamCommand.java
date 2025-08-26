@@ -1,39 +1,64 @@
 package commands.impl.streams;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import commands.base.ReadCommand;
 import commands.context.CommandContext;
 import commands.result.CommandResult;
 import commands.validation.CommandValidator;
 import commands.validation.ValidationResult;
-import errors.ErrorCode;
 import protocol.ResponseBuilder;
 
+/**
+ * Handles the XRANGE command for retrieving a range of entries from a Redis
+ * stream.
+ * Supports optional COUNT argument to limit the number of returned entries.
+ */
 public final class RangeStreamCommand extends ReadCommand {
+
+    private static final Logger logger = LoggerFactory.getLogger(RangeStreamCommand.class);
+
+    private static final String COMMAND_NAME = "XRANGE";
+    private static final String COUNT_ARG = "COUNT";
+    private static final int MIN_ARG_COUNT = 4;
+    private static final int MAX_ARG_COUNT = 6;
+    private static final int COUNT_ARG_INDEX = 4;
+    private static final int COUNT_VALUE_INDEX = 5;
+    private static final int START_INDEX = 2;
+    private static final int END_INDEX = 3;
+
     @Override
     public String getName() {
-        return "XRANGE";
+        return COMMAND_NAME;
     }
 
     @Override
     protected ValidationResult performValidation(CommandContext context) {
-        if (context.getArgCount() != 4 && context.getArgCount() != 6) {
-            return ValidationResult.invalid(ErrorCode.WRONG_ARG_COUNT.getMessage());
-        }
-        if (context.getArgCount() == 6) {
-            if (!"COUNT".equalsIgnoreCase(context.getArg(4))) {
-                return ValidationResult.invalid(ErrorCode.WRONG_ARG_COUNT.getMessage());
-            }
-            return CommandValidator.validateInteger(context.getArg(5));
-        }
-        return ValidationResult.valid();
+
+        // Case 1: XRANGE <key> <start> <end>
+        var basicForm = CommandValidator.argCount(MIN_ARG_COUNT);
+
+        // Case 2: XRANGE <key> <start> <end> COUNT <count>
+        var withCount = CommandValidator.argCount(MAX_ARG_COUNT)
+                .and(CommandValidator.argEquals(COUNT_ARG_INDEX, COUNT_ARG))
+                .and(ctx -> CommandValidator.validateInteger(ctx.getArg(COUNT_VALUE_INDEX)));
+
+        // Combine with OR: either basic form OR with COUNT is valid
+        return basicForm.or(withCount).validate(context);
     }
 
     @Override
     protected CommandResult executeInternal(CommandContext context) {
-        int count = context.getArgCount() == 4 ? 0 : context.getIntArg(5);
-        var res = context.getStorageService().getStreamRange(context.getKey(), context.getArg(2), context.getArg(3),
+        int count = context.getArgCount() == MIN_ARG_COUNT ? 0 : context.getIntArg(COUNT_VALUE_INDEX);
+        var streamEntries = context.getStorageService().getStreamRange(
+                context.getKey(),
+                context.getArg(START_INDEX),
+                context.getArg(END_INDEX),
                 count);
+        logger.debug("XRANGE executed for key: {}, start: {}, end: {}, count: {}",
+                context.getKey(), context.getArg(START_INDEX), context.getArg(END_INDEX), count);
         return CommandResult.success(
-                ResponseBuilder.streamEntries(res, e -> e.id(), e -> e.fieldList()));
+                ResponseBuilder.streamEntries(streamEntries, entry -> entry.entryId(), entry -> entry.fields()));
     }
 }

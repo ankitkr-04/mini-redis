@@ -13,58 +13,88 @@ import replication.ReplicationProtocol;
 import replication.ReplicationState;
 import server.ServerContext;
 
+/**
+ * Handles replication commands for Redis protocol, specifically the PSYNC
+ * command.
+ * Determines whether a full or partial resynchronization is required and
+ * performs the appropriate action.
+ */
 public class ReplicationHandler {
-    private static final Logger log = LoggerFactory.getLogger(ReplicationHandler.class);
+    private static final Logger LOGGER = LoggerFactory.getLogger(ReplicationHandler.class);
 
-    public CommandResult handlePsync(String replId, long requestedOffset, SocketChannel clientChannel,
-            ServerContext context) {
-        var replState = context.getReplicationState();
+    // Constant for unknown replication id as per Redis protocol
+    private static final String UNKNOWN_REPL_ID = "?";
+    // Constant for requested offset indicating full resync
+    private static final long FULL_RESYNC_OFFSET = -1;
 
-        if (shouldPerformFullResync(replId, requestedOffset, replState)) {
-            return performFullResync(replState, clientChannel, context);
+    /**
+     * Handles the PSYNC command from a replica.
+     *
+     * @param replicationId   The replication id sent by the replica.
+     * @param requestedOffset The replication offset requested by the replica.
+     * @param replicaChannel  The channel to the replica.
+     * @param serverContext   The server context.
+     * @return CommandResult indicating the outcome.
+     */
+    public CommandResult handlePsync(String replicationId, long requestedOffset, SocketChannel replicaChannel,
+            ServerContext serverContext) {
+        ReplicationState replicationState = serverContext.getReplicationState();
+
+        if (requiresFullResync(replicationId, requestedOffset, replicationState)) {
+            return performFullResync(replicationState, replicaChannel, serverContext);
         } else {
             return CommandResult.error("Partial resync not supported");
         }
     }
 
-    private boolean shouldPerformFullResync(String replId, long requestedOffset, ReplicationState replState) {
-        return "?".equals(replId) ||
-                !replId.equals(replState.getMasterReplicationId()) ||
-                requestedOffset == -1;
+    /**
+     * Determines if a full resynchronization is required based on the replication
+     * id and offset.
+     *
+     * @param replicationId    The replication id sent by the replica.
+     * @param requestedOffset  The replication offset requested by the replica.
+     * @param replicationState The current replication state of the server.
+     * @return True if a full resync is required, false otherwise.
+     */
+    private boolean requiresFullResync(String replicationId, long requestedOffset, ReplicationState replicationState) {
+        return UNKNOWN_REPL_ID.equals(replicationId)
+                || !replicationId.equals(replicationState.getMasterReplicationId())
+                || requestedOffset == FULL_RESYNC_OFFSET;
     }
 
-    private CommandResult performFullResync(ReplicationState replState, SocketChannel clientChannel,
-            ServerContext context) {
+    /**
+     * Performs a full resynchronization by sending the FULLRESYNC header and an
+     * empty RDB file to the replica.
+     *
+     * @param replicationState The current replication state of the server.
+     * @param replicaChannel   The channel to the replica.
+     * @param serverContext    The server context.
+     * @return CommandResult indicating the outcome.
+     */
+    private CommandResult performFullResync(ReplicationState replicationState, SocketChannel replicaChannel,
+            ServerContext serverContext) {
         try {
-            // Build the FULLRESYNC header buffer
-            ByteBuffer fullResyncBuf = ResponseBuilder.fullResyncResponse(
-                    replState.getMasterReplicationId(),
-                    replState.getMasterReplicationOffset());
+            ByteBuffer fullResyncHeader = ResponseBuilder.fullResyncResponse(
+                    replicationState.getMasterReplicationId(),
+                    replicationState.getMasterReplicationOffset());
 
-            // Build the RDB bulk string buffer using byte array directly
-            byte[] rdbBytes = ProtocolConstants.EMPTY_RDB_BYTES;
-            ByteBuffer rdbBulk = ResponseBuilder.rdbFilePayload(rdbBytes);
+            byte[] emptyRdbBytes = ProtocolConstants.EMPTY_RDB_BYTES;
+            ByteBuffer rdbPayload = ResponseBuilder.rdbFilePayload(emptyRdbBytes);
 
-            // Log for debugging
-            log.debug("RDB bytes length: {}", rdbBytes.length);
-            log.debug("RDB bulk buffer remaining: {}", rdbBulk.remaining());
+            ByteBuffer combinedResponse = ByteBuffer.allocate(fullResyncHeader.remaining() + rdbPayload.remaining());
+            combinedResponse.put(fullResyncHeader);
+            combinedResponse.put(rdbPayload);
+            combinedResponse.flip();
 
-            // Combine into one buffer to ensure a single atomic write
-            ByteBuffer combined = ByteBuffer.allocate(fullResyncBuf.remaining() + rdbBulk.remaining());
-            combined.put(fullResyncBuf);
-            combined.put(rdbBulk);
-            combined.flip();
+            ReplicationProtocol.sendResponse(replicaChannel, combinedResponse);
 
-            // Use ReplicationProtocol to send response
-            ReplicationProtocol.sendResponse(clientChannel, combined);
+            serverContext.getReplicationManager().addReplica(replicaChannel);
 
-            // Add replica to manager after successful send
-            context.getReplicationManager().addReplica(clientChannel);
-
-            log.info("Full resync completed for new replica");
+            LOGGER.info("Full resync completed for new replica at offset {}",
+                    replicationState.getMasterReplicationOffset());
             return CommandResult.async();
         } catch (Exception e) {
-            log.error("Full resync failed", e);
+            LOGGER.error("Full resync failed", e);
             return CommandResult.error("Full resync failed");
         }
     }

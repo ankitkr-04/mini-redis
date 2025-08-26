@@ -2,6 +2,9 @@ package commands.impl.pubsub;
 
 import java.util.List;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import commands.base.PubSubCommand;
 import commands.context.CommandContext;
 import commands.result.CommandResult;
@@ -9,53 +12,68 @@ import commands.validation.CommandValidator;
 import commands.validation.ValidationResult;
 import protocol.ResponseBuilder;
 
+/**
+ * Handles the UNSUBSCRIBE and PUNSUBSCRIBE commands for Redis protocol.
+ * Unsubscribes the client from one or more channels or patterns.
+ * If no channels/patterns are specified, unsubscribes from all.
+ */
 public class UnsubscribeCommand extends PubSubCommand {
+
+    private static final Logger logger = LoggerFactory.getLogger(UnsubscribeCommand.class);
+
+    private static final String UNSUBSCRIBE_COMMAND = "UNSUBSCRIBE";
+    private static final String PUNSUBSCRIBE_COMMAND = "PUNSUBSCRIBE";
+    private static final String UNSUBSCRIBE_KIND = "unsubscribe";
+    private static final String PUNSUBSCRIBE_KIND = "punsubscribe";
+    private static final int MIN_ARG_COUNT = 1; // At least command name
 
     @Override
     public String getName() {
-        return "UNSUBSCRIBE";
+        return UNSUBSCRIBE_COMMAND;
     }
 
     @Override
     protected ValidationResult performValidation(CommandContext context) {
-        // UNSUBSCRIBE/PUNSUBSCRIBE can be called with 0 or more channels/patterns
-        // so just ensure command name exists
-        return CommandValidator.validateMinArgs(context, 1);
+        // Accepts 0 or more arguments (command name always present)
+        return CommandValidator.minArgs(MIN_ARG_COUNT).validate(context);
     }
 
     @Override
     protected CommandResult executeInternal(CommandContext context) {
-        boolean isPatternBased = "PUNSUBSCRIBE".equalsIgnoreCase(context.getOperation());
-        var manager = context.getServerContext().getPubSubManager();
-        var client = context.getClientChannel();
+        boolean isPatternUnsubscribe = PUNSUBSCRIBE_COMMAND.equalsIgnoreCase(context.getOperation());
+        var pubSubManager = context.getServerContext().getPubSubManager();
+        var clientChannel = context.getClientChannel();
 
-        // If no arguments, Redis unsubscribes from all
-        List<String> targets = context.getArgCount() > 1
+        // If no arguments, unsubscribe from all; otherwise, unsubscribe from specified
+        // targets
+        List<String> unsubscribeTargets = context.getArgCount() > 1
                 ? context.getSlice(1, context.getArgCount())
                 : null;
 
-        if (isPatternBased) {
-            manager.punsubscribe(client, targets);
+        if (isPatternUnsubscribe) {
+            pubSubManager.punsubscribe(clientChannel, unsubscribeTargets);
         } else {
-            manager.unsubscribe(client, targets);
+            pubSubManager.unsubscribe(clientChannel, unsubscribeTargets);
         }
 
-        // For acknowledgements, figure out which keys were removed
-        List<String> unsubscribed = (targets != null && !targets.isEmpty())
-                ? targets
-                : (isPatternBased
-                        ? List.copyOf(manager.getOrCreateState(client).getSubscribedPatterns())
-                        : List.copyOf(manager.getOrCreateState(client).getSubscribedChannels()));
+        // Determine which channels/patterns were unsubscribed for acknowledgement
+        List<String> unsubscribedList = (unsubscribeTargets != null && !unsubscribeTargets.isEmpty())
+                ? unsubscribeTargets
+                : (isPatternUnsubscribe
+                        ? List.copyOf(pubSubManager.getOrCreateState(clientChannel).getSubscribedPatterns())
+                        : List.copyOf(pubSubManager.getOrCreateState(clientChannel).getSubscribedChannels()));
 
-        for (String target : unsubscribed) {
-            String kind = isPatternBased ? "punsubscribe" : "unsubscribe";
-            int count = manager.subscriptionCount(client);
+        for (String unsubscribed : unsubscribedList) {
+            String responseKind = isPatternUnsubscribe ? PUNSUBSCRIBE_KIND : UNSUBSCRIBE_KIND;
+            int remainingSubscriptions = pubSubManager.subscriptionCount(clientChannel);
 
-            var ack = ResponseBuilder.arrayOfBuffers(List.of(
-                    ResponseBuilder.bulkString(kind),
-                    ResponseBuilder.bulkString(target),
-                    ResponseBuilder.integer(count)));
-            return CommandResult.success(ack);
+            var response = ResponseBuilder.arrayOfBuffers(List.of(
+                    ResponseBuilder.bulkString(responseKind),
+                    ResponseBuilder.bulkString(unsubscribed),
+                    ResponseBuilder.integer(remainingSubscriptions)));
+            // Only log at debug level for traceability
+            logger.debug("Client {} unsubscribed from {}: {}", clientChannel, responseKind, unsubscribed);
+            return CommandResult.success(response);
         }
 
         return CommandResult.async(); // responses sent directly

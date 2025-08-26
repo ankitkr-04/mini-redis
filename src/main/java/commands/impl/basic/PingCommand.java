@@ -11,16 +11,26 @@ import commands.validation.ValidationResult;
 import config.ProtocolConstants;
 import protocol.ResponseBuilder;
 
+/**
+ * Implements the Redis PING command.
+ * <p>
+ * Responds with a PONG message or echoes a custom message if provided.
+ * In Pub/Sub mode, always replies with an array as per Redis protocol.
+ * </p>
+ */
 public final class PingCommand extends ReadCommand {
+
+    private static final String COMMAND_NAME = "PING";
 
     @Override
     public String getName() {
-        return "PING";
+        return COMMAND_NAME;
     }
 
     @Override
     protected ValidationResult performValidation(CommandContext context) {
-        return CommandValidator.validateArgRange(context, 1, 2);
+        // Accepts either "PING" or "PING <message>"
+        return CommandValidator.argRange(1, 2).validate(context);
     }
 
     @Override
@@ -33,16 +43,16 @@ public final class PingCommand extends ReadCommand {
 
         ByteBuffer response;
         if (inPubSubMode) {
-            // Pub/Sub mode → always array reply: ["pong", <message or "">]
+            // In Pub/Sub mode, always reply with array: ["pong", <message or "">]
             String second = (message != null) ? message : "";
             response = ResponseBuilder.array(List.of(
                     ProtocolConstants.PONG_RESPONSE.toLowerCase(),
                     second));
         } else if (message == null) {
-            // No argument → simple string "PONG"
+            // No argument: simple string "PONG"
             response = ResponseBuilder.simpleString(ProtocolConstants.PONG_RESPONSE);
         } else {
-            // With argument → bulk string reply of argument
+            // With argument: bulk string reply of argument
             response = ResponseBuilder.bulkString(message);
         }
 

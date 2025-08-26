@@ -7,11 +7,40 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Handles metrics requests and formats metrics output.
- * Provides methods to retrieve metrics in various formats.
+ * Handles metrics requests and formats metrics output for various formats such
+ * as Redis INFO and Prometheus.
+ * Provides methods to retrieve metrics for specific sections or all metrics.
+ * 
+ * @author Ankit Kumar
+ * @version 1.0
  */
 public final class MetricsHandler {
-    private static final Logger log = LoggerFactory.getLogger(MetricsHandler.class);
+    private static final Logger LOGGER = LoggerFactory.getLogger(MetricsHandler.class);
+
+    // Section headers
+    private static final String SECTION_SERVER = "# Server\r\n";
+    private static final String SECTION_ENDPOINT = "# Endpoint\r\n";
+    private static final String SECTION_KEYSPACE = "# Keyspace\r\n";
+    private static final String SECTION_COMMANDS = "# Commands\r\n";
+    private static final String SECTION_STORAGE = "# Storage\r\n";
+    private static final String SECTION_REPLICATION = "# Replication\r\n";
+    private static final String SECTION_PUBSUB = "# PubSub\r\n";
+    private static final String SECTION_TRANSACTIONS = "# Transactions\r\n";
+    private static final String SECTION_PERSISTENCE = "# Persistence\r\n";
+    private static final String LINE_SEPARATOR = "\r\n";
+
+    // Metric keys
+    private static final String KEY_ACTIVE_CONNECTIONS = "active_connections";
+    private static final String KEY_TOTAL_COMMANDS_PROCESSED = "total_commands_processed";
+    private static final String KEY_TOTAL_ERRORS = "total_errors";
+    private static final String KEY_MEMORY_USAGE_BYTES = "memory_usage_bytes";
+    private static final String KEY_UPTIME_SECONDS = "uptime_seconds";
+    private static final String KEY_COMMANDS = "commands";
+    private static final String KEY_STORAGE = "storage";
+    private static final String KEY_REPLICATION = "replication";
+    private static final String KEY_PUBSUB = "pubsub";
+    private static final String KEY_TRANSACTIONS = "transactions";
+    private static final String KEY_PERSISTENCE = "persistence";
 
     private final MetricsCollector metricsCollector;
 
@@ -20,7 +49,7 @@ public final class MetricsHandler {
     }
 
     /**
-     * Get the underlying metrics collector.
+     * Returns the underlying metrics collector.
      * 
      * @return the metrics collector instance
      */
@@ -29,140 +58,129 @@ public final class MetricsHandler {
     }
 
     /**
-     * Get all metrics formatted as INFO-style output (Redis INFO command format).
-     * Now includes Redis Enterprise compatible metrics.
+     * Returns all metrics formatted as a Redis INFO-style output.
      * 
      * @return Formatted metrics string
      */
     public String getMetricsAsInfo() {
         Map<String, Object> allMetrics = metricsCollector.getAllMetrics();
-        StringBuilder result = new StringBuilder();
+        StringBuilder infoBuilder = new StringBuilder();
 
-        // Server metrics section (Redis Enterprise style)
-        result.append("# Server\r\n");
-        result.append("active_connections:").append(allMetrics.get("active_connections")).append("\r\n");
-        result.append("total_commands_processed:").append(allMetrics.get("total_commands_processed")).append("\r\n");
-        result.append("total_errors:").append(allMetrics.get("total_errors")).append("\r\n");
-        result.append("memory_usage_bytes:").append(allMetrics.get("memory_usage_bytes")).append("\r\n");
-        result.append("uptime_seconds:").append(String.format("%.0f", (Double) allMetrics.get("uptime_seconds")))
-                .append("\r\n");
-        result.append("blocked_clients:").append(metricsCollector.getBlockedClients()).append("\r\n");
-        result.append("total_net_input_bytes:").append(String.format("%.0f", metricsCollector.getTotalNetInputBytes()))
-                .append("\r\n");
-        result.append("total_net_output_bytes:")
-                .append(String.format("%.0f", metricsCollector.getTotalNetOutputBytes())).append("\r\n");
-        result.append("total_connections_received:")
-                .append(String.format("%.0f", metricsCollector.getTotalConnectionsReceived())).append("\r\n");
-        result.append("\r\n");
+        // Server metrics section
+        infoBuilder.append(SECTION_SERVER);
+        infoBuilder.append(KEY_ACTIVE_CONNECTIONS).append(":").append(allMetrics.get(KEY_ACTIVE_CONNECTIONS))
+                .append(LINE_SEPARATOR);
+        infoBuilder.append(KEY_TOTAL_COMMANDS_PROCESSED).append(":")
+                .append(allMetrics.get(KEY_TOTAL_COMMANDS_PROCESSED)).append(LINE_SEPARATOR);
+        infoBuilder.append(KEY_TOTAL_ERRORS).append(":").append(allMetrics.get(KEY_TOTAL_ERRORS))
+                .append(LINE_SEPARATOR);
+        infoBuilder.append(KEY_MEMORY_USAGE_BYTES).append(":").append(allMetrics.get(KEY_MEMORY_USAGE_BYTES))
+                .append(LINE_SEPARATOR);
+        infoBuilder.append(KEY_UPTIME_SECONDS).append(":")
+                .append(String.format("%.0f", (Double) allMetrics.get(KEY_UPTIME_SECONDS))).append(LINE_SEPARATOR);
+        infoBuilder.append("blocked_clients:").append(metricsCollector.getBlockedClients()).append(LINE_SEPARATOR);
+        infoBuilder.append("total_net_input_bytes:")
+                .append(String.format("%.0f", metricsCollector.getTotalNetInputBytes())).append(LINE_SEPARATOR);
+        infoBuilder.append("total_net_output_bytes:")
+                .append(String.format("%.0f", metricsCollector.getTotalNetOutputBytes())).append(LINE_SEPARATOR);
+        infoBuilder.append("total_connections_received:")
+                .append(String.format("%.0f", metricsCollector.getTotalConnectionsReceived())).append(LINE_SEPARATOR);
+        infoBuilder.append(LINE_SEPARATOR);
 
-        // Redis Enterprise endpoint metrics
-        result.append("# Endpoint\r\n");
-        result.append("client_connections:").append(String.format("%.0f", metricsCollector.getClientConnections()))
-                .append("\r\n");
-        result.append("client_disconnections:")
-                .append(String.format("%.0f", metricsCollector.getClientDisconnections())).append("\r\n");
-        result.append("client_establishment_failures:")
-                .append(String.format("%.0f", metricsCollector.getClientConnectionFailures())).append("\r\n");
-        result.append("read_requests:").append(String.format("%.0f", metricsCollector.getReadRequests()))
-                .append("\r\n");
-        result.append("write_requests:").append(String.format("%.0f", metricsCollector.getWriteRequests()))
-                .append("\r\n");
-        result.append("other_requests:").append(String.format("%.0f", metricsCollector.getOtherRequests()))
-                .append("\r\n");
-        result.append("read_responses:").append(String.format("%.0f", metricsCollector.getReadResponses()))
-                .append("\r\n");
-        result.append("write_responses:").append(String.format("%.0f", metricsCollector.getWriteResponses()))
-                .append("\r\n");
-        result.append("other_responses:").append(String.format("%.0f", metricsCollector.getOtherResponses()))
-                .append("\r\n");
-        result.append("\r\n");
+        // Endpoint metrics section
+        infoBuilder.append(SECTION_ENDPOINT);
+        infoBuilder.append("client_connections:").append(String.format("%.0f", metricsCollector.getClientConnections()))
+                .append(LINE_SEPARATOR);
+        infoBuilder.append("client_disconnections:")
+                .append(String.format("%.0f", metricsCollector.getClientDisconnections())).append(LINE_SEPARATOR);
+        infoBuilder.append("client_establishment_failures:")
+                .append(String.format("%.0f", metricsCollector.getClientConnectionFailures())).append(LINE_SEPARATOR);
+        infoBuilder.append("read_requests:").append(String.format("%.0f", metricsCollector.getReadRequests()))
+                .append(LINE_SEPARATOR);
+        infoBuilder.append("write_requests:").append(String.format("%.0f", metricsCollector.getWriteRequests()))
+                .append(LINE_SEPARATOR);
+        infoBuilder.append("other_requests:").append(String.format("%.0f", metricsCollector.getOtherRequests()))
+                .append(LINE_SEPARATOR);
+        infoBuilder.append("read_responses:").append(String.format("%.0f", metricsCollector.getReadResponses()))
+                .append(LINE_SEPARATOR);
+        infoBuilder.append("write_responses:").append(String.format("%.0f", metricsCollector.getWriteResponses()))
+                .append(LINE_SEPARATOR);
+        infoBuilder.append("other_responses:").append(String.format("%.0f", metricsCollector.getOtherResponses()))
+                .append(LINE_SEPARATOR);
+        infoBuilder.append(LINE_SEPARATOR);
 
-        // Keyspace metrics (Redis Enterprise style)
-        result.append("# Keyspace\r\n");
-        result.append("total_keys:").append(metricsCollector.getTotalKeys()).append("\r\n");
-        result.append("string_keys:").append(metricsCollector.getStringKeys()).append("\r\n");
-        result.append("list_keys:").append(metricsCollector.getListKeys()).append("\r\n");
-        result.append("set_keys:").append(metricsCollector.getSetKeys()).append("\r\n");
-        result.append("zset_keys:").append(metricsCollector.getZsetKeys()).append("\r\n");
-        result.append("hash_keys:").append(metricsCollector.getHashKeys()).append("\r\n");
-        result.append("stream_keys:").append(metricsCollector.getStreamKeys()).append("\r\n");
-        result.append("keyspace_read_hits:").append(String.format("%.0f", metricsCollector.getKeyspaceReadHits()))
-                .append("\r\n");
-        result.append("keyspace_read_misses:").append(String.format("%.0f", metricsCollector.getKeyspaceReadMisses()))
-                .append("\r\n");
-        result.append("keyspace_write_hits:").append(String.format("%.0f", metricsCollector.getKeyspaceWriteHits()))
-                .append("\r\n");
-        result.append("keyspace_write_misses:").append(String.format("%.0f", metricsCollector.getKeyspaceWriteMisses()))
-                .append("\r\n");
-        result.append("\r\n");
+        // Keyspace metrics section
+        infoBuilder.append(SECTION_KEYSPACE);
+        infoBuilder.append("total_keys:").append(metricsCollector.getTotalKeys()).append(LINE_SEPARATOR);
+        infoBuilder.append("string_keys:").append(metricsCollector.getStringKeys()).append(LINE_SEPARATOR);
+        infoBuilder.append("list_keys:").append(metricsCollector.getListKeys()).append(LINE_SEPARATOR);
+        infoBuilder.append("set_keys:").append(metricsCollector.getSetKeys()).append(LINE_SEPARATOR);
+        infoBuilder.append("zset_keys:").append(metricsCollector.getZsetKeys()).append(LINE_SEPARATOR);
+        infoBuilder.append("hash_keys:").append(metricsCollector.getHashKeys()).append(LINE_SEPARATOR);
+        infoBuilder.append("stream_keys:").append(metricsCollector.getStreamKeys()).append(LINE_SEPARATOR);
+        infoBuilder.append("keyspace_read_hits:").append(String.format("%.0f", metricsCollector.getKeyspaceReadHits()))
+                .append(LINE_SEPARATOR);
+        infoBuilder.append("keyspace_read_misses:")
+                .append(String.format("%.0f", metricsCollector.getKeyspaceReadMisses())).append(LINE_SEPARATOR);
+        infoBuilder.append("keyspace_write_hits:")
+                .append(String.format("%.0f", metricsCollector.getKeyspaceWriteHits())).append(LINE_SEPARATOR);
+        infoBuilder.append("keyspace_write_misses:")
+                .append(String.format("%.0f", metricsCollector.getKeyspaceWriteMisses())).append(LINE_SEPARATOR);
+        infoBuilder.append(LINE_SEPARATOR);
 
-        // Command metrics section
-        @SuppressWarnings("unchecked")
-        Map<String, Object> commandMetrics = (Map<String, Object>) allMetrics.get("commands");
-        if (commandMetrics != null && !commandMetrics.isEmpty()) {
-            result.append("# Commands\r\n");
-            commandMetrics.forEach((key, value) -> result.append(key).append(":").append(value).append("\r\n"));
-            result.append("\r\n");
-        }
+        // Commands metrics section
+        appendSectionMetrics(infoBuilder, allMetrics, KEY_COMMANDS, SECTION_COMMANDS);
 
         // Storage metrics section
-        @SuppressWarnings("unchecked")
-        Map<String, Object> storageMetrics = (Map<String, Object>) allMetrics.get("storage");
-        if (storageMetrics != null && !storageMetrics.isEmpty()) {
-            result.append("# Storage\r\n");
-            storageMetrics.forEach((key, value) -> result.append(key).append(":").append(value).append("\r\n"));
-            result.append("\r\n");
-        }
+        appendSectionMetrics(infoBuilder, allMetrics, KEY_STORAGE, SECTION_STORAGE);
 
         // Replication metrics section
-        @SuppressWarnings("unchecked")
-        Map<String, Object> replicationMetrics = (Map<String, Object>) allMetrics.get("replication");
-        if (replicationMetrics != null && !replicationMetrics.isEmpty()) {
-            result.append("# Replication\r\n");
-            replicationMetrics.forEach((key, value) -> result.append(key).append(":").append(value).append("\r\n"));
-            result.append("\r\n");
-        }
+        appendSectionMetrics(infoBuilder, allMetrics, KEY_REPLICATION, SECTION_REPLICATION);
 
         // Pub/Sub metrics section
         @SuppressWarnings("unchecked")
-        Map<String, Object> pubsubMetrics = (Map<String, Object>) allMetrics.get("pubsub");
+        Map<String, Object> pubsubMetrics = (Map<String, Object>) allMetrics.get(KEY_PUBSUB);
         if (pubsubMetrics != null && !pubsubMetrics.isEmpty()) {
-            result.append("# PubSub\r\n");
-            result.append("active_channels:").append(pubsubMetrics.get("active_channels")).append("\r\n");
-            result.append("messages_published:").append(pubsubMetrics.get("messages_published")).append("\r\n");
+            infoBuilder.append(SECTION_PUBSUB);
+            infoBuilder.append("active_channels:").append(pubsubMetrics.get("active_channels")).append(LINE_SEPARATOR);
+            infoBuilder.append("messages_published:").append(pubsubMetrics.get("messages_published"))
+                    .append(LINE_SEPARATOR);
 
             @SuppressWarnings("unchecked")
             Map<String, Integer> subscriberCounts = (Map<String, Integer>) pubsubMetrics.get("subscribers_per_channel");
             if (subscriberCounts != null && !subscriberCounts.isEmpty()) {
-                subscriberCounts.forEach((channel, count) -> result.append("subscribers_").append(channel).append(":")
-                        .append(count).append("\r\n"));
+                subscriberCounts.forEach((channel, count) -> infoBuilder.append("subscribers_").append(channel)
+                        .append(":").append(count).append(LINE_SEPARATOR));
             }
-            result.append("\r\n");
+            infoBuilder.append(LINE_SEPARATOR);
         }
 
-        // Transaction metrics section
-        @SuppressWarnings("unchecked")
-        Map<String, Object> transactionMetrics = (Map<String, Object>) allMetrics.get("transactions");
-        if (transactionMetrics != null && !transactionMetrics.isEmpty()) {
-            result.append("# Transactions\r\n");
-            transactionMetrics.forEach((key, value) -> result.append(key).append(":").append(value).append("\r\n"));
-            result.append("\r\n");
-        }
+        // Transactions metrics section
+        appendSectionMetrics(infoBuilder, allMetrics, KEY_TRANSACTIONS, SECTION_TRANSACTIONS);
 
         // Persistence metrics section
-        @SuppressWarnings("unchecked")
-        Map<String, Object> persistenceMetrics = (Map<String, Object>) allMetrics.get("persistence");
-        if (persistenceMetrics != null && !persistenceMetrics.isEmpty()) {
-            result.append("# Persistence\r\n");
-            persistenceMetrics.forEach((key, value) -> result.append(key).append(":").append(value).append("\r\n"));
-            result.append("\r\n");
-        }
+        appendSectionMetrics(infoBuilder, allMetrics, KEY_PERSISTENCE, SECTION_PERSISTENCE);
 
-        return result.toString();
+        return infoBuilder.toString();
     }
 
     /**
-     * Get metrics for a specific section.
+     * Appends a metrics section to the infoBuilder if present in allMetrics.
+     */
+    private void appendSectionMetrics(StringBuilder infoBuilder, Map<String, Object> allMetrics, String sectionKey,
+            String sectionHeader) {
+        @SuppressWarnings("unchecked")
+        Map<String, Object> sectionMetrics = (Map<String, Object>) allMetrics.get(sectionKey);
+        if (sectionMetrics != null && !sectionMetrics.isEmpty()) {
+            infoBuilder.append(sectionHeader);
+            sectionMetrics
+                    .forEach((key, value) -> infoBuilder.append(key).append(":").append(value).append(LINE_SEPARATOR));
+            infoBuilder.append(LINE_SEPARATOR);
+        }
+    }
+
+    /**
+     * Returns metrics for a specific section.
      * 
      * @param section Section name (server, commands, storage, replication, pubsub,
      *                transactions, persistence)
@@ -174,56 +192,32 @@ public final class MetricsHandler {
 
         switch (section.toLowerCase()) {
             case "server":
-                sectionMetrics.put("active_connections", allMetrics.get("active_connections"));
-                sectionMetrics.put("total_commands_processed", allMetrics.get("total_commands_processed"));
-                sectionMetrics.put("total_errors", allMetrics.get("total_errors"));
-                sectionMetrics.put("memory_usage_bytes", allMetrics.get("memory_usage_bytes"));
-                sectionMetrics.put("uptime_seconds", allMetrics.get("uptime_seconds"));
+                sectionMetrics.put(KEY_ACTIVE_CONNECTIONS, allMetrics.get(KEY_ACTIVE_CONNECTIONS));
+                sectionMetrics.put(KEY_TOTAL_COMMANDS_PROCESSED, allMetrics.get(KEY_TOTAL_COMMANDS_PROCESSED));
+                sectionMetrics.put(KEY_TOTAL_ERRORS, allMetrics.get(KEY_TOTAL_ERRORS));
+                sectionMetrics.put(KEY_MEMORY_USAGE_BYTES, allMetrics.get(KEY_MEMORY_USAGE_BYTES));
+                sectionMetrics.put(KEY_UPTIME_SECONDS, allMetrics.get(KEY_UPTIME_SECONDS));
                 break;
             case "commands":
-                @SuppressWarnings("unchecked")
-                Map<String, Object> commandMetrics = (Map<String, Object>) allMetrics.get("commands");
-                if (commandMetrics != null) {
-                    sectionMetrics.putAll(commandMetrics);
-                }
+                addSectionMetrics(allMetrics, sectionMetrics, KEY_COMMANDS);
                 break;
             case "storage":
-                @SuppressWarnings("unchecked")
-                Map<String, Object> storageMetrics = (Map<String, Object>) allMetrics.get("storage");
-                if (storageMetrics != null) {
-                    sectionMetrics.putAll(storageMetrics);
-                }
+                addSectionMetrics(allMetrics, sectionMetrics, KEY_STORAGE);
                 break;
             case "replication":
-                @SuppressWarnings("unchecked")
-                Map<String, Object> replicationMetrics = (Map<String, Object>) allMetrics.get("replication");
-                if (replicationMetrics != null) {
-                    sectionMetrics.putAll(replicationMetrics);
-                }
+                addSectionMetrics(allMetrics, sectionMetrics, KEY_REPLICATION);
                 break;
             case "pubsub":
-                @SuppressWarnings("unchecked")
-                Map<String, Object> pubsubMetrics = (Map<String, Object>) allMetrics.get("pubsub");
-                if (pubsubMetrics != null) {
-                    sectionMetrics.putAll(pubsubMetrics);
-                }
+                addSectionMetrics(allMetrics, sectionMetrics, KEY_PUBSUB);
                 break;
             case "transactions":
-                @SuppressWarnings("unchecked")
-                Map<String, Object> transactionMetrics = (Map<String, Object>) allMetrics.get("transactions");
-                if (transactionMetrics != null) {
-                    sectionMetrics.putAll(transactionMetrics);
-                }
+                addSectionMetrics(allMetrics, sectionMetrics, KEY_TRANSACTIONS);
                 break;
             case "persistence":
-                @SuppressWarnings("unchecked")
-                Map<String, Object> persistenceMetrics = (Map<String, Object>) allMetrics.get("persistence");
-                if (persistenceMetrics != null) {
-                    sectionMetrics.putAll(persistenceMetrics);
-                }
+                addSectionMetrics(allMetrics, sectionMetrics, KEY_PERSISTENCE);
                 break;
             default:
-                log.warn("Unknown metrics section requested: {}", section);
+                LOGGER.warn("Unknown metrics section requested: {}", section);
                 break;
         }
 
@@ -231,7 +225,19 @@ public final class MetricsHandler {
     }
 
     /**
-     * Get all metrics as a map.
+     * Adds metrics from a section in allMetrics to sectionMetrics.
+     */
+    @SuppressWarnings("unchecked")
+    private void addSectionMetrics(Map<String, Object> allMetrics, Map<String, Object> sectionMetrics,
+            String sectionKey) {
+        Map<String, Object> metrics = (Map<String, Object>) allMetrics.get(sectionKey);
+        if (metrics != null) {
+            sectionMetrics.putAll(metrics);
+        }
+    }
+
+    /**
+     * Returns all metrics as a map.
      * 
      * @return Map containing all metrics
      */
@@ -240,63 +246,71 @@ public final class MetricsHandler {
     }
 
     /**
-     * Get metrics in Prometheus format.
+     * Returns metrics in Prometheus format.
      * 
      * @return Prometheus-formatted metrics string
      */
     public String getMetricsAsPrometheus() {
         Map<String, Object> allMetrics = metricsCollector.getAllMetrics();
-        StringBuilder result = new StringBuilder();
+        StringBuilder prometheusBuilder = new StringBuilder();
 
-        // Add basic server metrics
-        appendPrometheusMetric(result, "redis_connected_clients", allMetrics.get("active_connections"),
+        // Basic server metrics
+        appendPrometheusMetric(prometheusBuilder, "redis_connected_clients", allMetrics.get(KEY_ACTIVE_CONNECTIONS),
                 "Number of client connections");
-        appendPrometheusMetric(result, "redis_commands_processed_total", allMetrics.get("total_commands_processed"),
+        appendPrometheusMetric(prometheusBuilder, "redis_commands_processed_total",
+                allMetrics.get(KEY_TOTAL_COMMANDS_PROCESSED),
                 "Total number of commands processed");
-        appendPrometheusMetric(result, "redis_errors_total", allMetrics.get("total_errors"), "Total number of errors");
-        appendPrometheusMetric(result, "redis_memory_usage_bytes", allMetrics.get("memory_usage_bytes"),
+        appendPrometheusMetric(prometheusBuilder, "redis_errors_total", allMetrics.get(KEY_TOTAL_ERRORS),
+                "Total number of errors");
+        appendPrometheusMetric(prometheusBuilder, "redis_memory_usage_bytes", allMetrics.get(KEY_MEMORY_USAGE_BYTES),
                 "Memory usage in bytes");
-        appendPrometheusMetric(result, "redis_uptime_seconds", allMetrics.get("uptime_seconds"),
+        appendPrometheusMetric(prometheusBuilder, "redis_uptime_seconds", allMetrics.get(KEY_UPTIME_SECONDS),
                 "Server uptime in seconds");
 
-        // Add command metrics
+        // Command metrics
         @SuppressWarnings("unchecked")
-        Map<String, Object> commandMetrics = (Map<String, Object>) allMetrics.get("commands");
+        Map<String, Object> commandMetrics = (Map<String, Object>) allMetrics.get(KEY_COMMANDS);
         if (commandMetrics != null) {
-            commandMetrics.forEach((key, value) -> {
-                if (key.endsWith("_count")) {
-                    String commandName = key.substring(0, key.length() - 6);
-                    appendPrometheusMetricWithTags(result, "redis_command_executions_total", value,
+            commandMetrics.forEach((metricName, metricValue) -> {
+                if (metricName.endsWith("_count")) {
+                    String commandName = metricName.substring(0, metricName.length() - 6);
+                    appendPrometheusMetricWithTags(prometheusBuilder, "redis_command_executions_total", metricValue,
                             "Number of executions for command", "command", commandName);
-                } else if (key.endsWith("_errors")) {
-                    String commandName = key.substring(0, key.length() - 7);
-                    appendPrometheusMetricWithTags(result, "redis_command_errors_total", value,
+                } else if (metricName.endsWith("_errors")) {
+                    String commandName = metricName.substring(0, metricName.length() - 7);
+                    appendPrometheusMetricWithTags(prometheusBuilder, "redis_command_errors_total", metricValue,
                             "Number of errors for command", "command", commandName);
                 }
             });
         }
 
-        // Add other metrics sections...
+        // Additional metrics sections can be added here as needed
 
-        return result.toString();
+        return prometheusBuilder.toString();
     }
 
-    private void appendPrometheusMetric(StringBuilder sb, String name, Object value, String help) {
-        sb.append("# HELP ").append(name).append(" ").append(help).append("\n");
-        sb.append("# TYPE ").append(name).append(" gauge\n");
-        sb.append(name).append(" ").append(value).append("\n");
+    /**
+     * Appends a Prometheus metric line to the builder.
+     */
+    private void appendPrometheusMetric(StringBuilder builder, String metricName, Object value, String help) {
+        builder.append("# HELP ").append(metricName).append(" ").append(help).append("\n");
+        builder.append("# TYPE ").append(metricName).append(" gauge\n");
+        builder.append(metricName).append(" ").append(value).append("\n");
     }
 
-    private void appendPrometheusMetricWithTags(StringBuilder sb, String name, Object value, String help,
+    /**
+     * Appends a Prometheus metric line with tags to the builder.
+     */
+    private void appendPrometheusMetricWithTags(StringBuilder builder, String metricName, Object value, String help,
             String... tags) {
-        sb.append("# HELP ").append(name).append(" ").append(help).append("\n");
-        sb.append("# TYPE ").append(name).append(" counter\n");
-        sb.append(name).append("{");
+        builder.append("# HELP ").append(metricName).append(" ").append(help).append("\n");
+        builder.append("# TYPE ").append(metricName).append(" counter\n");
+        builder.append(metricName).append("{");
         for (int i = 0; i < tags.length; i += 2) {
             if (i > 0)
-                sb.append(",");
-            sb.append(tags[i]).append("=\"").append(tags[i + 1]).append("\"");
+                builder.append(",");
+            builder.append(tags[i]).append("=\"").append(tags[i + 1]).append("\"");
         }
-        sb.append("} ").append(value).append("\n");
+        builder.append("} ").append(value).append("\n");
     }
 }

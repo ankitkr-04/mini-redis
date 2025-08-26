@@ -20,15 +20,38 @@ import server.ServerContext;
 import storage.StorageService;
 import storage.types.StoredValue;
 
+/**
+ * Append-Only File (AOF) persistence repository.
+ *
+ * <p>
+ * Handles writing commands to the AOF file in Redis RESP format
+ * and replaying them on restart to rebuild the dataset.
+ * </p>
+ *
+ * @author Ankit Kumar
+ * @version 1.0
+ * @since 1.0
+ */
 public class AofRepository implements PersistentRepository {
-    private static final Logger log = LoggerFactory.getLogger(AofRepository.class);
+    private static final Logger LOGGER = LoggerFactory.getLogger(AofRepository.class);
+
+    private static final String RESP_LINE_ENDING = "\r\n";
+    private static final String SET_COMMAND = "SET";
+    private static final String DEL_COMMAND = "DEL";
+    private static final String LPUSH_COMMAND = "LPUSH";
+    private static final String RPUSH_COMMAND = "RPUSH";
+    private static final String LPOP_COMMAND = "LPOP";
+    private static final String RPOP_COMMAND = "RPOP";
+    private static final String INCR_COMMAND = "INCR";
+    private static final String ZADD_COMMAND = "ZADD";
+    private static final String ZREM_COMMAND = "ZREM";
 
     private final Map<String, StoredValue<?>> store;
     private final ReentrantReadWriteLock lock = new ReentrantReadWriteLock();
     private File aofFile;
     private BufferedWriter aofWriter;
     private StorageService storageService;
-    private ServerContext serverContext;
+    private final ServerContext serverContext;
 
     public AofRepository(Map<String, StoredValue<?>> store, ServerContext serverContext) {
         this.store = store;
@@ -39,13 +62,19 @@ public class AofRepository implements PersistentRepository {
         this.storageService = storageService;
     }
 
+    /**
+     * Initializes the AOF file in append mode.
+     */
     public void initializeAofFile(File aofFile) throws IOException {
         this.aofFile = aofFile;
         ensureParentDirectory(aofFile);
-        this.aofWriter = new BufferedWriter(new FileWriter(aofFile, true)); // append mode
-        log.info("AOF file initialized: {}", aofFile.getAbsolutePath());
+        this.aofWriter = new BufferedWriter(new FileWriter(aofFile, true));
+        LOGGER.info("AOF file initialized: {}", aofFile.getAbsolutePath());
     }
 
+    /**
+     * Appends a command to the AOF file in RESP format.
+     */
     public void appendCommand(String[] command) {
         if (aofWriter == null) {
             return;
@@ -53,15 +82,12 @@ public class AofRepository implements PersistentRepository {
 
         lock.writeLock().lock();
         try {
-            // Write in Redis protocol format (RESP)
             String respCommand = formatRespArray(command);
             aofWriter.write(respCommand);
-            aofWriter.flush(); // Ensure immediate write for durability
-
-            // Record AOF write metric
+            aofWriter.flush();
             serverContext.getMetricsCollector().incrementAofWrites();
         } catch (IOException e) {
-            log.error("Failed to append command to AOF: {}", String.join(" ", command), e);
+            LOGGER.error("Failed to append command to AOF: {}", String.join(" ", command), e);
             serverContext.getMetricsCollector().incrementPersistenceErrors();
         } finally {
             lock.writeLock().unlock();
@@ -69,142 +95,137 @@ public class AofRepository implements PersistentRepository {
     }
 
     private String formatRespArray(String[] command) {
-        StringBuilder sb = new StringBuilder();
-        sb.append("*").append(command.length).append("\r\n");
+        StringBuilder respBuilder = new StringBuilder();
+        respBuilder.append("*").append(command.length).append(RESP_LINE_ENDING);
         for (String arg : command) {
-            sb.append("$").append(arg.length()).append("\r\n");
-            sb.append(arg).append("\r\n");
+            respBuilder.append("$").append(arg.length()).append(RESP_LINE_ENDING);
+            respBuilder.append(arg).append(RESP_LINE_ENDING);
         }
-        return sb.toString();
+        return respBuilder.toString();
     }
 
     @Override
     public void saveSnapshot(File rdbFile) {
-        // AOF doesn't need to save snapshots in the traditional sense
-        // but we can implement BGREWRITEAOF functionality here in the future
-        log.info("AOF saveSnapshot called - no action needed for AOF mode");
+        // AOF does not require snapshot saving
+        LOGGER.debug("saveSnapshot called in AOF mode - ignored");
     }
 
     @Override
     public void loadSnapshot(File aofFile) throws IOException {
         if (!aofFile.exists()) {
-            log.info("AOF file does not exist: {}", aofFile.getAbsolutePath());
+            LOGGER.info("AOF file does not exist: {}", aofFile.getAbsolutePath());
             return;
         }
 
-        log.info("Loading AOF file: {}", aofFile.getAbsolutePath());
+        LOGGER.info("Loading AOF file: {}", aofFile.getAbsolutePath());
         this.aofFile = aofFile;
 
         lock.writeLock().lock();
         try {
             store.clear();
             replayAofCommands();
-
-            // Initialize writer for future commands
             this.aofWriter = new BufferedWriter(new FileWriter(aofFile, true));
-
-            log.info("AOF file loaded successfully. Store now contains {} keys", store.size());
+            LOGGER.info("AOF file loaded successfully. Store now contains {} keys", store.size());
         } finally {
             lock.writeLock().unlock();
         }
     }
 
     private void replayAofCommands() throws IOException {
-        StringBuilder fileContent = new StringBuilder();
+        StringBuilder contentBuilder = new StringBuilder();
         try (BufferedReader reader = new BufferedReader(new FileReader(aofFile))) {
-            String line;
-            while ((line = reader.readLine()) != null) {
-                fileContent.append(line).append("\r\n");
+            String currentLine;
+            while ((currentLine = reader.readLine()) != null) {
+                contentBuilder.append(currentLine).append(RESP_LINE_ENDING);
             }
         }
 
-        if (fileContent.length() == 0) {
+        if (contentBuilder.length() == 0) {
             return;
         }
 
-        // Parse using the existing ProtocolParser
-        ByteBuffer buffer = ByteBuffer.wrap(fileContent.toString().getBytes(StandardCharsets.UTF_8));
+        ByteBuffer buffer = ByteBuffer.wrap(contentBuilder.toString().getBytes(StandardCharsets.UTF_8));
         List<String[]> commands = ProtocolParser.parseRespArrays(buffer);
 
         for (String[] command : commands) {
             if (command != null && command.length > 0) {
-                executeCommandForReplay(command);
+                replaySingleCommand(command);
             }
         }
     }
 
-    private void executeCommandForReplay(String[] command) {
+    private void replaySingleCommand(String[] command) {
         if (storageService == null) {
-            log.warn("StorageService not set, cannot replay command: {}", String.join(" ", command));
+            LOGGER.warn("StorageService not set, cannot replay command: {}", String.join(" ", command));
             return;
         }
 
+        String commandName = command[0].toUpperCase();
         try {
-            // Execute the command directly on storage service based on command type
-            String commandName = command[0].toUpperCase();
-
             switch (commandName) {
-                case "SET" -> {
+                case SET_COMMAND -> {
                     if (command.length >= 3) {
-                        storageService.setString(command[1], command[2],
-                                storage.expiry.ExpiryPolicy.never());
+                        storageService.setString(command[1], command[2], storage.expiry.ExpiryPolicy.never());
                     }
                 }
-                case "DEL" -> {
+                case DEL_COMMAND -> {
                     for (int i = 1; i < command.length; i++) {
                         storageService.delete(command[i]);
                     }
                 }
-                case "LPUSH" -> {
+                case LPUSH_COMMAND -> {
                     if (command.length >= 3) {
-                        String[] values = new String[command.length - 2];
-                        System.arraycopy(command, 2, values, 0, values.length);
+                        String[] values = extractValues(command, 2);
                         storageService.leftPush(command[1], values);
                     }
                 }
-                case "RPUSH" -> {
+                case RPUSH_COMMAND -> {
                     if (command.length >= 3) {
-                        String[] values = new String[command.length - 2];
-                        System.arraycopy(command, 2, values, 0, values.length);
+                        String[] values = extractValues(command, 2);
                         storageService.rightPush(command[1], values);
                     }
                 }
-                case "LPOP" -> {
+                case LPOP_COMMAND -> {
                     if (command.length >= 2) {
                         storageService.leftPop(command[1]);
                     }
                 }
-                case "RPOP" -> {
+                case RPOP_COMMAND -> {
                     if (command.length >= 2) {
                         storageService.rightPop(command[1]);
                     }
                 }
-                case "INCR" -> {
+                case INCR_COMMAND -> {
                     if (command.length >= 2) {
                         storageService.incrementString(command[1]);
                     }
                 }
-                case "ZADD" -> {
+                case ZADD_COMMAND -> {
                     if (command.length >= 4) {
                         try {
                             double score = Double.parseDouble(command[2]);
                             storageService.zAdd(command[1], command[3], score);
                         } catch (NumberFormatException e) {
-                            log.warn("Invalid score in ZADD command: {}", command[2]);
+                            LOGGER.warn("Invalid score in ZADD command: {}", command[2]);
                         }
                     }
                 }
-                case "ZREM" -> {
+                case ZREM_COMMAND -> {
                     if (command.length >= 3) {
                         storageService.zRemove(command[1], command[2]);
                     }
                 }
-                // Add more commands as needed
-                default -> log.debug("Command not supported for AOF replay: {}", commandName);
+                default -> LOGGER.debug("Unsupported command in AOF replay: {}", commandName);
             }
         } catch (Exception e) {
-            log.error("Failed to replay command: {}", String.join(" ", command), e);
+            LOGGER.error("Failed to replay command: {}", String.join(" ", command), e);
         }
+    }
+
+    private String[] extractValues(String[] command, int startIndex) {
+        String[] values = new String[command.length - startIndex];
+        System.arraycopy(command, startIndex, values, 0, values.length);
+        return values;
     }
 
     public void close() throws IOException {

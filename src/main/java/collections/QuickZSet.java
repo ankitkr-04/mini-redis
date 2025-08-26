@@ -8,11 +8,31 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.ConcurrentSkipListSet;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+/**
+ * Thread-safe implementation of a Redis-like sorted set (ZSet).
+ * Supports add, remove, pop min/max, range queries, and rank retrieval.
+ *
+ * @author Ankit Kumar
+ * @version 1.0
+ */
 public final class QuickZSet {
+
+    /** Logger for QuickZSet */
+    private static final Logger LOGGER = LoggerFactory.getLogger(QuickZSet.class);
+
     private final ConcurrentSkipListMap<Double, ConcurrentSkipListSet<String>> scoreMap = new ConcurrentSkipListMap<>();
     private final ConcurrentHashMap<String, Double> memberMap = new ConcurrentHashMap<>();
 
-    /** Add or update a member, returns true if new member was added */
+    /**
+     * Adds or updates a member with the given score.
+     * 
+     * @param member the member to add or update
+     * @param score  the score associated with the member
+     * @return true if a new member was added, false if updated
+     */
     public boolean add(String member, double score) {
         Double oldScore = memberMap.put(member, score);
         if (oldScore != null) {
@@ -20,6 +40,9 @@ public final class QuickZSet {
                 set.remove(member);
                 return set.isEmpty() ? null : set;
             });
+            LOGGER.debug("Updated member '{}' from score {} to {}", member, oldScore, score);
+        } else {
+            LOGGER.debug("Added new member '{}' with score {}", member, score);
         }
         scoreMap.compute(score, (k, set) -> {
             if (set == null)
@@ -27,10 +50,15 @@ public final class QuickZSet {
             set.add(member);
             return set;
         });
-        return oldScore == null; // Return true if this was a new member
+        return oldScore == null;
     }
 
-    /** Remove a member */
+    /**
+     * Removes a member from the set.
+     * 
+     * @param member the member to remove
+     * @return true if the member was removed, false if not found
+     */
     public boolean remove(String member) {
         Double score = memberMap.remove(member);
         if (score == null)
@@ -39,10 +67,15 @@ public final class QuickZSet {
             set.remove(member);
             return set.isEmpty() ? null : set;
         });
+        LOGGER.debug("Removed member '{}' with score {}", member, score);
         return true;
     }
 
-    /** Pop member with smallest score */
+    /**
+     * Pops and returns the member with the smallest score.
+     * 
+     * @return Optional containing the entry, or empty if set is empty
+     */
     public Optional<ZSetEntry> popMin() {
         while (!scoreMap.isEmpty()) {
             Map.Entry<Double, ConcurrentSkipListSet<String>> entry = scoreMap.firstEntry();
@@ -53,13 +86,18 @@ public final class QuickZSet {
                 memberMap.remove(member);
                 if (entry.getValue().isEmpty())
                     scoreMap.remove(entry.getKey(), entry.getValue());
+                LOGGER.debug("Popped min member '{}' with score {}", member, entry.getKey());
                 return Optional.of(new ZSetEntry(member, entry.getKey()));
             }
         }
         return Optional.empty();
     }
 
-    /** Pop member with largest score */
+    /**
+     * Pops and returns the member with the largest score.
+     * 
+     * @return Optional containing the entry, or empty if set is empty
+     */
     public Optional<ZSetEntry> popMax() {
         while (!scoreMap.isEmpty()) {
             Map.Entry<Double, ConcurrentSkipListSet<String>> entry = scoreMap.lastEntry();
@@ -70,13 +108,20 @@ public final class QuickZSet {
                 memberMap.remove(member);
                 if (entry.getValue().isEmpty())
                     scoreMap.remove(entry.getKey(), entry.getValue());
+                LOGGER.debug("Popped max member '{}' with score {}", member, entry.getKey());
                 return Optional.of(new ZSetEntry(member, entry.getKey()));
             }
         }
         return Optional.empty();
     }
 
-    /** Range by index, supports negative indices */
+    /**
+     * Returns a range of entries by index, supporting negative indices.
+     * 
+     * @param start start index (inclusive), negative for offset from end
+     * @param end   end index (inclusive), negative for offset from end
+     * @return list of entries in the specified range
+     */
     public List<ZSetEntry> range(int start, int end) {
         int size = memberMap.size();
         if (start < 0)
@@ -102,7 +147,13 @@ public final class QuickZSet {
         return result;
     }
 
-    /** Range by score inclusive */
+    /**
+     * Returns a range of entries with scores between min and max (inclusive).
+     * 
+     * @param min minimum score (inclusive)
+     * @param max maximum score (inclusive)
+     * @return list of entries in the specified score range
+     */
     public List<ZSetEntry> rangeByScore(double min, double max) {
         List<ZSetEntry> result = new ArrayList<>();
         scoreMap.subMap(min, true, max, true).forEach((score, set) -> {
@@ -112,22 +163,41 @@ public final class QuickZSet {
         return result;
     }
 
-    /** Check if member exists */
+    /**
+     * Checks if a member exists in the set.
+     * 
+     * @param member the member to check
+     * @return true if the member exists, false otherwise
+     */
     public boolean contains(String member) {
         return memberMap.containsKey(member);
     }
 
-    /** Get size */
+    /**
+     * Returns the number of members in the set.
+     * 
+     * @return size of the set
+     */
     public int size() {
         return memberMap.size();
     }
 
-    /** Get score for a member */
+    /**
+     * Gets the score for a given member.
+     * 
+     * @param member the member to query
+     * @return the score, or null if not found
+     */
     public Double getScore(String member) {
         return memberMap.get(member);
     }
 
-    /** Get rank (0-based index) for a member */
+    /**
+     * Gets the rank (0-based index) for a member.
+     * 
+     * @param member the member to query
+     * @return rank if found, null otherwise
+     */
     public Long getRank(String member) {
         Double memberScore = memberMap.get(member);
         if (memberScore == null) {
@@ -137,7 +207,6 @@ public final class QuickZSet {
         long rank = 0;
         for (var entry : scoreMap.entrySet()) {
             if (entry.getKey().equals(memberScore)) {
-                // Found the score bucket, find position within it
                 for (String m : entry.getValue()) {
                     if (m.equals(member)) {
                         return rank;
@@ -145,16 +214,20 @@ public final class QuickZSet {
                     rank++;
                 }
             } else if (entry.getKey() < memberScore) {
-                // All members in this bucket have lower scores
                 rank += entry.getValue().size();
             } else {
-                // Higher score bucket, member not found
                 break;
             }
         }
         return null;
     }
 
+    /**
+     * Immutable entry representing a member and its score.
+     * 
+     * @param member the member name
+     * @param score  the score value
+     */
     public record ZSetEntry(String member, double score) {
     }
 }

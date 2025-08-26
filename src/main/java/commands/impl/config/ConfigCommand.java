@@ -2,6 +2,9 @@ package commands.impl.config;
 
 import java.util.List;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import commands.base.ReadCommand;
 import commands.context.CommandContext;
 import commands.result.CommandResult;
@@ -9,22 +12,33 @@ import commands.validation.CommandValidator;
 import commands.validation.ValidationResult;
 import protocol.ResponseBuilder;
 
+/**
+ * Handles the Redis CONFIG GET command.
+ * <p>
+ * Only supports fetching configuration parameters using "CONFIG GET
+ * &lt;parameter&gt;".
+ * </p>
+ */
 public class ConfigCommand extends ReadCommand {
+
+    private static final Logger LOGGER = LoggerFactory.getLogger(ConfigCommand.class);
+
+    private static final String COMMAND_NAME = "CONFIG";
+    private static final String SUPPORTED_SUBCOMMAND = "GET";
+    private static final int MIN_ARG_COUNT = 3;
+    private static final int MAX_ARG_COUNT = 3;
+
     @Override
     public String getName() {
-        return "CONFIG";
+        return COMMAND_NAME;
     }
 
     @Override
     protected ValidationResult performValidation(CommandContext context) {
-        ValidationResult argCountValidation = CommandValidator.validateArgRange(context, 2, 3);
-        if (!argCountValidation.isValid()) {
-            return argCountValidation;
-        }
-        if (!"GET".equalsIgnoreCase(context.getArg(1))) {
-            return ValidationResult.invalid("Only CONFIG GET is supported");
-        }
-        return ValidationResult.valid();
+
+        return CommandValidator.argRange(MIN_ARG_COUNT, MAX_ARG_COUNT).and(
+                CommandValidator.argEquals(1, SUPPORTED_SUBCOMMAND)).validate(context);
+
     }
 
     @Override
@@ -33,7 +47,13 @@ public class ConfigCommand extends ReadCommand {
         var config = context.getServerContext().getConfig();
 
         return config.getConfigParameter(parameter)
-                .map(value -> CommandResult.success(ResponseBuilder.array(List.of(parameter, value))))
-                .orElseGet(() -> CommandResult.error("Unknown configuration parameter: " + parameter));
+                .map(value -> {
+                    LOGGER.debug("CONFIG GET for parameter '{}': '{}'", parameter, value);
+                    return CommandResult.success(ResponseBuilder.array(List.of(parameter, value)));
+                })
+                .orElseGet(() -> {
+                    LOGGER.info("Unknown configuration parameter requested: '{}'", parameter);
+                    return CommandResult.error("Unknown configuration parameter: " + parameter);
+                });
     }
 }

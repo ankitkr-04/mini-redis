@@ -5,6 +5,9 @@ import java.nio.channels.SocketChannel;
 import java.time.Duration;
 import java.time.Instant;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import commands.context.CommandContext;
 import commands.core.Command;
 import commands.impl.basic.PingCommand;
@@ -21,13 +24,44 @@ import storage.StorageService;
 import transaction.TransactionManager;
 import transaction.TransactionState;
 
+/**
+ * Central command dispatcher for processing Redis protocol commands.
+ * 
+ * <p>
+ * This class is responsible for receiving raw command arguments, validating
+ * them,
+ * looking up the appropriate command handler, and executing the command with
+ * proper
+ * context. It handles transaction state, pub/sub mode restrictions, and command
+ * propagation for replication.
+ * </p>
+ * 
+ * @author Ankit Kumar
+ * @version 1.0
+ * @since 1.0
+ */
 public final class CommandDispatcher {
+
+    /** Logger instance for this class */
+    private static final Logger LOGGER = LoggerFactory.getLogger(CommandDispatcher.class);
+
+    /** Minimum number of arguments required for a valid command */
+    private static final int MINIMUM_COMMAND_ARGS = 1;
     private final CommandRegistry registry;
     private final StorageService storage;
     private final TransactionManager transactionManager;
     private final PubSubManager pubSubManager;
     private final ServerContext context;
 
+    /**
+     * Constructs a new CommandDispatcher with the required dependencies.
+     * 
+     * @param registry           the command registry for looking up commands
+     * @param storage            the storage service for data operations
+     * @param transactionManager the transaction manager for handling MULTI/EXEC
+     * @param pubSubManager      the pub/sub manager for subscription handling
+     * @param context            the server context containing shared resources
+     */
     public CommandDispatcher(CommandRegistry registry,
             StorageService storage,
             TransactionManager transactionManager,
@@ -40,10 +74,25 @@ public final class CommandDispatcher {
         this.context = context;
     }
 
+    /**
+     * Dispatches a command with the given arguments.
+     * 
+     * @param rawArgs       the raw command arguments
+     * @param clientChannel the client socket channel
+     * @return the response buffer, or null if no response needed
+     */
     public ByteBuffer dispatch(String[] rawArgs, SocketChannel clientChannel) {
         return dispatch(rawArgs, clientChannel, false);
     }
 
+    /**
+     * Dispatches a command with the given arguments and propagation flag.
+     * 
+     * @param rawArgs             the raw command arguments
+     * @param clientChannel       the client socket channel
+     * @param isPropagatedCommand whether this is a propagated command from master
+     * @return the response buffer, or null if no response needed
+     */
     public ByteBuffer dispatch(String[] rawArgs,
             SocketChannel clientChannel,
             boolean isPropagatedCommand) {
@@ -71,20 +120,43 @@ public final class CommandDispatcher {
         return executeCommand(command, cmdContext, clientChannel, isPropagatedCommand, rawArgs);
     }
 
+    /**
+     * Validates that command input is not null and has at least one argument.
+     * 
+     * @param rawArgs the raw command arguments to validate
+     * @return true if input is valid, false otherwise
+     */
     private boolean isValidCommandInput(String[] rawArgs) {
-        return rawArgs != null && rawArgs.length > 0;
+        return rawArgs != null && rawArgs.length >= MINIMUM_COMMAND_ARGS;
     }
 
+    /**
+     * Handles unknown command scenarios.
+     * 
+     * @param commandName         the unknown command name
+     * @param isPropagatedCommand whether this is a propagated command
+     * @return error response buffer or null for propagated commands
+     */
     private ByteBuffer handleUnknownCommand(String commandName, boolean isPropagatedCommand) {
-        return isPropagatedCommand
-                ? null
-                : ResponseBuilder.error(ErrorCode.UNKNOWN_COMMAND.format(commandName));
+        if (isPropagatedCommand) {
+            LOGGER.debug("Ignoring unknown propagated command: {}", commandName);
+            return null;
+        }
+        return ResponseBuilder.error(ErrorCode.UNKNOWN_COMMAND.format(commandName));
     }
 
+    /**
+     * Handles command validation failures.
+     * 
+     * @param isPropagatedCommand whether this is a propagated command
+     * @return error response buffer or null for propagated commands
+     */
     private ByteBuffer handleValidationFailure(boolean isPropagatedCommand) {
-        return isPropagatedCommand
-                ? null
-                : ResponseBuilder.error(ErrorCode.WRONG_ARG_COUNT.getMessage());
+        if (isPropagatedCommand) {
+            LOGGER.debug("Ignoring invalid propagated command");
+            return null;
+        }
+        return ResponseBuilder.error(ErrorCode.WRONG_ARG_COUNT.getMessage());
     }
 
     private boolean canExecuteInCurrentMode(SocketChannel clientChannel, Command command) {

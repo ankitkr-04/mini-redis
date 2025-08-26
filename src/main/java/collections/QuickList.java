@@ -6,20 +6,40 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.concurrent.locks.StampedLock;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import config.ProtocolConstants;
 
+/**
+ * QuickList is a thread-safe, double-ended queue (deque) implementation using a
+ * linked list of fixed-size nodes.
+ * It supports efficient push/pop operations from both ends and is optimized for
+ * concurrent access.
+ *
+ * @author Ankit Kumar
+ * @version 1.0
+ */
 public final class QuickList<T> implements Iterable<T> {
+
+    /** SLF4J Logger instance for QuickList */
+    private static final Logger LOGGER = LoggerFactory.getLogger(QuickList.class);
+
+    /** Capacity of each node in the QuickList */
     private static final int NODE_CAPACITY = ProtocolConstants.LIST_NODE_CAPACITY;
 
-    private static final class Node<T> {
-        @SuppressWarnings("unchecked")
-        final T[] elements = (T[]) new Object[NODE_CAPACITY];
-        int start, end; // Range: [start, end)
-        Node<T> prev, next;
+    /** Default initial index for new nodes (centered for optimal growth) */
+    private static final int NODE_INITIAL_INDEX = NODE_CAPACITY / 2;
 
-        Node() {
-            start = end = NODE_CAPACITY / 2;
-        }
+    /**
+     * Node represents a segment in the QuickList, holding a fixed-size array of
+     * elements.
+     */
+    private static final class Node<T> {
+        final Object[] elements = new Object[NODE_CAPACITY];
+        int start = NODE_INITIAL_INDEX;
+        int end = NODE_INITIAL_INDEX;
+        Node<T> prev, next;
 
         int size() {
             return end - start;
@@ -42,6 +62,11 @@ public final class QuickList<T> implements Iterable<T> {
     private int totalSize = 0;
     private final StampedLock lock = new StampedLock();
 
+    /**
+     * Pushes an element to the left end of the list.
+     * 
+     * @param value element to add
+     */
     public void pushLeft(T value) {
         long stamp = lock.writeLock();
         try {
@@ -53,6 +78,11 @@ public final class QuickList<T> implements Iterable<T> {
         }
     }
 
+    /**
+     * Pushes multiple elements to the left end of the list.
+     * 
+     * @param values elements to add
+     */
     @SafeVarargs
     public final void pushLeft(T... values) {
         if (values.length == 0)
@@ -69,6 +99,11 @@ public final class QuickList<T> implements Iterable<T> {
         }
     }
 
+    /**
+     * Pushes an element to the right end of the list.
+     * 
+     * @param value element to add
+     */
     public void pushRight(T value) {
         long stamp = lock.writeLock();
         try {
@@ -80,6 +115,11 @@ public final class QuickList<T> implements Iterable<T> {
         }
     }
 
+    /**
+     * Pushes multiple elements to the right end of the list.
+     * 
+     * @param values elements to add
+     */
     @SafeVarargs
     public final void pushRight(T... values) {
         if (values.length == 0)
@@ -96,12 +136,18 @@ public final class QuickList<T> implements Iterable<T> {
         }
     }
 
+    /**
+     * Pops an element from the left end of the list.
+     * 
+     * @return the removed element or null if empty
+     */
     public T popLeft() {
         long stamp = lock.writeLock();
         try {
             if (head == null)
                 return null;
-            T value = head.elements[head.start];
+            @SuppressWarnings("unchecked")
+            T value = (T) head.elements[head.start];
             head.elements[head.start++] = null;
             totalSize--;
             if (head.isEmpty())
@@ -112,12 +158,18 @@ public final class QuickList<T> implements Iterable<T> {
         }
     }
 
+    /**
+     * Pops an element from the right end of the list.
+     * 
+     * @return the removed element or null if empty
+     */
     public T popRight() {
         long stamp = lock.writeLock();
         try {
             if (tail == null)
                 return null;
-            T value = tail.elements[--tail.end];
+            @SuppressWarnings("unchecked")
+            T value = (T) tail.elements[--tail.end];
             tail.elements[tail.end] = null;
             totalSize--;
             if (tail.isEmpty())
@@ -128,6 +180,12 @@ public final class QuickList<T> implements Iterable<T> {
         }
     }
 
+    /**
+     * Pops multiple elements from the left end of the list.
+     * 
+     * @param count number of elements to pop
+     * @return list of removed elements
+     */
     public List<T> popLeft(int count) {
         if (count <= 0)
             return List.of();
@@ -141,7 +199,9 @@ public final class QuickList<T> implements Iterable<T> {
             while (remaining > 0 && head != null) {
                 int take = Math.min(remaining, head.size());
                 for (int i = 0; i < take; i++) {
-                    result.add(head.elements[head.start]);
+                    @SuppressWarnings("unchecked")
+                    T value = (T) head.elements[head.start];
+                    result.add(value);
                     head.elements[head.start++] = null;
                 }
                 if (head.isEmpty())
@@ -155,6 +215,12 @@ public final class QuickList<T> implements Iterable<T> {
         }
     }
 
+    /**
+     * Pops multiple elements from the right end of the list.
+     * 
+     * @param count number of elements to pop
+     * @return list of removed elements
+     */
     public List<T> popRight(int count) {
         if (count <= 0)
             return List.of();
@@ -168,7 +234,9 @@ public final class QuickList<T> implements Iterable<T> {
             while (remaining > 0 && tail != null) {
                 int take = Math.min(remaining, tail.size());
                 for (int i = 0; i < take; i++) {
-                    result.add(tail.elements[--tail.end]);
+                    @SuppressWarnings("unchecked")
+                    T value = (T) tail.elements[--tail.end];
+                    result.add(value);
                     tail.elements[tail.end] = null;
                 }
                 if (tail.isEmpty())
@@ -183,6 +251,13 @@ public final class QuickList<T> implements Iterable<T> {
         }
     }
 
+    /**
+     * Returns a range of elements from the list.
+     * 
+     * @param start start index (inclusive)
+     * @param end   end index (inclusive)
+     * @return list of elements in the specified range
+     */
     public List<T> range(int start, int end) {
         long stamp = lock.tryOptimisticRead();
         List<T> result = rangeImpl(start, end);
@@ -213,8 +288,11 @@ public final class QuickList<T> implements Iterable<T> {
         Node<T> current = head;
         while (current != null && currentIndex <= end) {
             for (int i = current.start; i < current.end && currentIndex <= end; i++) {
-                if (currentIndex >= start)
-                    result.add(current.elements[i]);
+                if (currentIndex >= start) {
+                    @SuppressWarnings("unchecked")
+                    T value = (T) current.elements[i];
+                    result.add(value);
+                }
                 currentIndex++;
             }
             current = current.next;
@@ -224,9 +302,9 @@ public final class QuickList<T> implements Iterable<T> {
 
     /**
      * Returns the total number of elements in the list.
-     * Uses optimistic read lock for better performance - if validation fails,
-     * falls back to reading the volatile field directly.
-     * Thread-safe: This method is lock-free in the common case.
+     * Uses optimistic read lock for better performance.
+     * 
+     * @return number of elements
      */
     public int length() {
         long stamp = lock.tryOptimisticRead();
@@ -234,6 +312,11 @@ public final class QuickList<T> implements Iterable<T> {
         return lock.validate(stamp) ? size : totalSize;
     }
 
+    /**
+     * Checks if the list is empty.
+     * 
+     * @return true if empty, false otherwise
+     */
     public boolean isEmpty() {
         return length() == 0;
     }
@@ -284,6 +367,11 @@ public final class QuickList<T> implements Iterable<T> {
             head = null;
     }
 
+    /**
+     * Returns a string representation of the list.
+     * 
+     * @return string representation
+     */
     @Override
     public String toString() {
         long stamp = lock.readLock();
@@ -297,7 +385,9 @@ public final class QuickList<T> implements Iterable<T> {
                 for (int i = current.start; i < current.end; i++) {
                     if (!first)
                         sb.append(", ");
-                    sb.append(current.elements[i]);
+                    @SuppressWarnings("unchecked")
+                    T value = (T) current.elements[i];
+                    sb.append(value);
                     first = false;
                 }
                 current = current.next;
@@ -308,6 +398,11 @@ public final class QuickList<T> implements Iterable<T> {
         }
     }
 
+    /**
+     * Returns an iterator over the elements in the list.
+     * 
+     * @return iterator
+     */
     @Override
     public Iterator<T> iterator() {
         long stamp = lock.readLock();
@@ -316,7 +411,9 @@ public final class QuickList<T> implements Iterable<T> {
             Node<T> current = head;
             while (current != null) {
                 for (int i = current.start; i < current.end; i++) {
-                    snapshot.add(current.elements[i]);
+                    @SuppressWarnings("unchecked")
+                    T value = (T) current.elements[i];
+                    snapshot.add(value);
                 }
                 current = current.next;
             }
