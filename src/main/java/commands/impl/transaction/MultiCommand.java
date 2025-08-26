@@ -22,13 +22,14 @@ public final class MultiCommand extends WriteCommand {
 
     @Override
     protected CommandResult executeInternal(CommandContext context) {
-        var state = context.getServerContext().getTransactionManager().getOrCreateState(context.getClientChannel());
+        var transactionManager = context.getServerContext().getTransactionManager();
+        var state = transactionManager.getOrCreateState(context.getClientChannel());
 
         if (state.isInTransaction()) {
             return CommandResult.error(ErrorCode.NESTED_MULTI.getMessage());
         }
 
-        state.beginTransaction();
+        transactionManager.beginTransaction(context.getClientChannel());
         return CommandResult.success(ResponseBuilder.encode(ProtocolConstants.RESP_OK));
     }
 }

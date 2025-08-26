@@ -1,6 +1,7 @@
 module redis {
     requires org.slf4j;
-    requires micrometer.core;
+    requires org.slf4j.simple;
+    requires transitive micrometer.core;
     requires micrometer.registry.prometheus;
     requires io.prometheus.metrics.core;
     requires transitive jdk.httpserver;

@@ -20,7 +20,8 @@ public final class ClientConnectionHandler {
     private ClientConnectionHandler() {
     } // Utility class
 
-    public static void acceptNewConnection(SelectionKey key, Selector selector, ServerContext serverContext) throws IOException {
+    public static void acceptNewConnection(SelectionKey key, Selector selector, ServerContext serverContext)
+            throws IOException {
         ServerSocketChannel serverChannel = (ServerSocketChannel) key.channel();
         SocketChannel clientChannel = serverChannel.accept();
 
@@ -28,34 +29,44 @@ public final class ClientConnectionHandler {
             clientChannel.configureBlocking(false);
             clientChannel.register(selector, SelectionKey.OP_READ, ByteBuffer.allocate(BUFFER_SIZE));
             log.info("Client connected: {}", clientChannel.getRemoteAddress());
-            
-            // Update connection metrics
-            serverContext.getMetricsCollector().incrementActiveConnections();
+
+            // Record Redis Enterprise compatible connection metrics
+            var metricsCollector = serverContext.getMetricsCollector();
+            metricsCollector.recordClientConnection();
         }
     }
 
-    public static void handleClientRequest(SelectionKey key, CommandDispatcher dispatcher, ServerContext serverContext) throws IOException {
+    public static void handleClientRequest(SelectionKey key, CommandDispatcher dispatcher, ServerContext serverContext)
+            throws IOException {
         SocketChannel clientChannel = (SocketChannel) key.channel();
         ByteBuffer buffer = (ByteBuffer) key.attachment();
 
         int bytesRead = clientChannel.read(buffer);
 
         if (bytesRead > 0) {
+            // Record network input metrics
+            serverContext.getMetricsCollector().recordNetworkInput(bytesRead);
+
             buffer.flip();
             String[] commands = ProtocolParser.parse(buffer);
             ByteBuffer response = dispatcher.dispatch(commands, clientChannel);
 
             if (response != null) {
+                int responseSize = response.remaining();
                 writeCompleteResponse(clientChannel, response);
+
+                // Record network output metrics
+                serverContext.getMetricsCollector().recordNetworkOutput(responseSize);
             }
             buffer.clear();
 
         } else if (bytesRead == -1) {
             log.info("Client disconnected: {}", clientChannel.getRemoteAddress());
-            
-            // Update connection metrics
-            serverContext.getMetricsCollector().decrementActiveConnections();
-            
+
+            // Record Redis Enterprise compatible disconnection metrics
+            var metricsCollector = serverContext.getMetricsCollector();
+            metricsCollector.recordClientDisconnection();
+
             key.cancel();
             clientChannel.close();
         }

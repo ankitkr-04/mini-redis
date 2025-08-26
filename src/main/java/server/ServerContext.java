@@ -55,7 +55,7 @@ public final class ServerContext implements EventPublisher {
 
         // Initialize persistent repository based on configuration
         if (config.appendOnlyMode()) {
-            AofRepository aofRepo = new AofRepository(storageService.getStore());
+            AofRepository aofRepo = new AofRepository(storageService.getStore(), this);
             aofRepo.setStorageService(storageService);
             persistentRepository = aofRepo;
         } else {
@@ -63,9 +63,8 @@ public final class ServerContext implements EventPublisher {
         }
 
         this.blockingManager = new BlockingManager(storageService);
-        this.transactionManager = new TransactionManager();
-        this.pubSubManager = new PubSubManager();
-
+        this.transactionManager = new TransactionManager(this);
+                this.pubSubManager = new PubSubManager(this);
         // Initialize metrics
         this.metricsCollector = new MetricsCollector();
         this.metricsHandler = new MetricsHandler(metricsCollector);
@@ -77,7 +76,7 @@ public final class ServerContext implements EventPublisher {
                 config.isReplicaMode() ? config.getMasterInfo().port() : 0,
                 config.replicationBacklogSize());
 
-        this.replicationManager = new ReplicationManager(replicationState);
+        this.replicationManager = new ReplicationManager(replicationState, this);
         this.commandRegistry = CommandFactory.createRegistry(this);
         this.commandDispatcher = new CommandDispatcher(commandRegistry, storageService, transactionManager,
                 pubSubManager, this);

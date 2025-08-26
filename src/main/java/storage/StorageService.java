@@ -41,6 +41,27 @@ public final class StorageService {
         }
     }
 
+    private void recordReadMetrics(boolean hasResult) {
+        if (eventPublisher instanceof server.ServerContext serverContext) {
+            if (hasResult) {
+                serverContext.getMetricsCollector().recordKeyspaceReadHit();
+            } else {
+                serverContext.getMetricsCollector().recordKeyspaceReadMiss();
+            }
+        }
+    }
+
+    private void recordWriteMetrics(boolean isNewKey, String keyType) {
+        if (eventPublisher instanceof server.ServerContext serverContext) {
+            if (isNewKey) {
+                serverContext.getMetricsCollector().recordKeyspaceWriteMiss();
+                serverContext.getMetricsCollector().recordKeyCreated(keyType);
+            } else {
+                serverContext.getMetricsCollector().recordKeyspaceWriteHit();
+            }
+        }
+    }
+
     public Map<String, StoredValue<?>> getStore() {
         return store;
     }
@@ -49,14 +70,14 @@ public final class StorageService {
     public void setString(String key, String value, ExpiryPolicy expiry) {
         boolean isNewKey = !stringRepo.exists(key);
         stringRepo.put(key, value, expiry);
-        if (isNewKey && eventPublisher != null && eventPublisher instanceof server.ServerContext) {
-            ((server.ServerContext) eventPublisher).getMetricsCollector().incrementKeyCount("string");
-        }
+        recordWriteMetrics(isNewKey, "string");
         notifyKeyModified(key);
     }
 
     public Optional<String> getString(String key) {
-        return stringRepo.get(key);
+        Optional<String> result = stringRepo.get(key);
+        recordReadMetrics(result.isPresent());
+        return result;
     }
 
     public long incrementString(String key) {
@@ -67,19 +88,24 @@ public final class StorageService {
 
     // List operations
     public int leftPush(String key, String... values) {
+        boolean isNewKey = !listRepo.exists(key);
         int result = listRepo.pushLeft(key, values);
+        recordWriteMetrics(isNewKey, "list");
         notifyKeyModified(key);
         return result;
     }
 
     public int rightPush(String key, String... values) {
+        boolean isNewKey = !listRepo.exists(key);
         int result = listRepo.pushRight(key, values);
+        recordWriteMetrics(isNewKey, "list");
         notifyKeyModified(key);
         return result;
     }
 
     public Optional<String> leftPop(String key) {
         Optional<String> result = listRepo.popLeft(key);
+        recordReadMetrics(result.isPresent());
         if (result.isPresent()) {
             notifyKeyModified(key);
         }
@@ -88,6 +114,7 @@ public final class StorageService {
 
     public Optional<String> rightPop(String key) {
         Optional<String> result = listRepo.popRight(key);
+        recordReadMetrics(result.isPresent());
         if (result.isPresent()) {
             notifyKeyModified(key);
         }
@@ -111,42 +138,58 @@ public final class StorageService {
     }
 
     public List<String> getListRange(String key, int start, int end) {
-        return listRepo.range(key, start, end);
+        List<String> result = listRepo.range(key, start, end);
+        recordReadMetrics(!result.isEmpty());
+        return result;
     }
 
     public int getListLength(String key) {
-        return listRepo.getLength(key);
+        int result = listRepo.getLength(key);
+        recordReadMetrics(result > 0);
+        return result;
     }
 
     // Stream operations
     public String addStreamEntry(String key, String id, Map<String, String> fields,
             ExpiryPolicy expiry) {
+        boolean isNewKey = !streamRepo.exists(key);
         String result = streamRepo.addEntry(key, id, fields, expiry);
+        recordWriteMetrics(isNewKey, "stream");
         notifyKeyModified(key);
         return result;
     }
 
     public Optional<String> getLastStreamId(String key) {
-        return streamRepo.getLastId(key);
+        Optional<String> result = streamRepo.getLastId(key);
+        recordReadMetrics(result.isPresent());
+        return result;
     }
 
     public List<StreamRangeEntry> getStreamRange(String key, String start, String end, int count) {
-        return streamRepo.getRange(key, start, end, count);
+        List<StreamRangeEntry> result = streamRepo.getRange(key, start, end, count);
+        recordReadMetrics(!result.isEmpty());
+        return result;
     }
 
     public List<StreamRangeEntry> getStreamRange(String key, String start, String end) {
-        return streamRepo.getRange(key, start, end, 0);
+        List<StreamRangeEntry> result = streamRepo.getRange(key, start, end, 0);
+        recordReadMetrics(!result.isEmpty());
+        return result;
     }
 
     public List<StreamRangeEntry> getStreamAfter(String key, String afterId, int count) {
-        return streamRepo.getAfter(key, afterId, count);
+        List<StreamRangeEntry> result = streamRepo.getAfter(key, afterId, count);
+        recordReadMetrics(!result.isEmpty());
+        return result;
     }
 
     // === ZSet operations ===
 
     /** Add or update a member with a score, returns true if new member was added */
     public boolean zAdd(String key, String member, double score) {
+        boolean isNewKey = !zSetRepo.exists(key);
         boolean result = zSetRepo.add(key, member, score);
+        recordWriteMetrics(isNewKey, "zset");
         notifyKeyModified(key);
         return result;
     }
@@ -163,6 +206,7 @@ public final class StorageService {
     /** Pop member with smallest score */
     public Optional<QuickZSet.ZSetEntry> zPopMin(String key) {
         Optional<QuickZSet.ZSetEntry> result = zSetRepo.popMin(key);
+        recordReadMetrics(result.isPresent());
         if (result.isPresent()) {
             notifyKeyModified(key);
         }
@@ -172,6 +216,7 @@ public final class StorageService {
     /** Pop member with largest score */
     public Optional<QuickZSet.ZSetEntry> zPopMax(String key) {
         Optional<QuickZSet.ZSetEntry> result = zSetRepo.popMax(key);
+        recordReadMetrics(result.isPresent());
         if (result.isPresent()) {
             notifyKeyModified(key);
         }
@@ -180,27 +225,37 @@ public final class StorageService {
 
     /** Get range by rank (supports negative indices) */
     public List<QuickZSet.ZSetEntry> zRange(String key, int start, int end) {
-        return zSetRepo.range(key, start, end);
+        List<QuickZSet.ZSetEntry> result = zSetRepo.range(key, start, end);
+        recordReadMetrics(!result.isEmpty());
+        return result;
     }
 
     /** Get range by score */
     public List<QuickZSet.ZSetEntry> zRangeByScore(String key, double min, double max) {
-        return zSetRepo.rangeByScore(key, min, max);
+        List<QuickZSet.ZSetEntry> result = zSetRepo.rangeByScore(key, min, max);
+        recordReadMetrics(!result.isEmpty());
+        return result;
     }
 
     /** Get size */
     public int zSize(String key) {
-        return zSetRepo.size(key);
+        int result = zSetRepo.size(key);
+        recordReadMetrics(result > 0);
+        return result;
     }
 
     /** Get score for member */
     public Double zScore(String key, String member) {
-        return zSetRepo.getScore(key, member);
+        Double result = zSetRepo.getScore(key, member);
+        recordReadMetrics(result != null);
+        return result;
     }
 
     /** Get rank for member */
     public Long zRank(String key, String member) {
-        return zSetRepo.getRank(key, member);
+        Long result = zSetRepo.getRank(key, member);
+        recordReadMetrics(result != null);
+        return result;
     }
 
     // General operations
@@ -258,7 +313,18 @@ public final class StorageService {
     }
 
     public void cleanup() {
+        long expiredCount = store.entrySet().stream()
+                .filter(entry -> entry.getValue().isExpired())
+                .count();
+        
         store.entrySet().removeIf(entry -> entry.getValue().isExpired());
+        
+        // Record expired keys metrics
+        if (expiredCount > 0 && eventPublisher instanceof server.ServerContext serverContext) {
+            for (int i = 0; i < expiredCount; i++) {
+                serverContext.getMetricsCollector().incrementExpiredKeys();
+            }
+        }
     }
 
     private StoredValue<?> getValidValue(String key) {

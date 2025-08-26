@@ -18,6 +18,7 @@ import org.slf4j.LoggerFactory;
 import protocol.ProtocolParser;
 import storage.StorageService;
 import storage.types.StoredValue;
+import server.ServerContext;
 
 public class AofRepository implements PersistentRepository {
     private static final Logger log = LoggerFactory.getLogger(AofRepository.class);
@@ -27,9 +28,11 @@ public class AofRepository implements PersistentRepository {
     private File aofFile;
     private BufferedWriter aofWriter;
     private StorageService storageService;
+    private ServerContext serverContext;
 
-    public AofRepository(Map<String, StoredValue<?>> store) {
+    public AofRepository(Map<String, StoredValue<?>> store, ServerContext serverContext) {
         this.store = store;
+        this.serverContext = serverContext;
     }
 
     public void setStorageService(StorageService storageService) {
@@ -54,8 +57,12 @@ public class AofRepository implements PersistentRepository {
             String respCommand = formatRespArray(command);
             aofWriter.write(respCommand);
             aofWriter.flush(); // Ensure immediate write for durability
+            
+            // Record AOF write metric
+            serverContext.getMetricsCollector().incrementAofWrites();
         } catch (IOException e) {
             log.error("Failed to append command to AOF: {}", String.join(" ", command), e);
+            serverContext.getMetricsCollector().incrementPersistenceErrors();
         } finally {
             lock.writeLock().unlock();
         }

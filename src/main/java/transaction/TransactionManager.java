@@ -5,8 +5,15 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
+import server.ServerContext;
+
 public final class TransactionManager {
     private final Map<SocketChannel, TransactionState> clientStates = new ConcurrentHashMap<>();
+    private final ServerContext serverContext;
+
+    public TransactionManager(ServerContext serverContext) {
+        this.serverContext = serverContext;
+    }
 
     public TransactionState getOrCreateState(SocketChannel client) {
         if (client == null) {
@@ -23,7 +30,37 @@ public final class TransactionManager {
     }
 
     public void clearState(SocketChannel client) {
-        clientStates.remove(client);
+        TransactionState state = clientStates.remove(client);
+        if (state != null && state.isInTransaction()) {
+            serverContext.getMetricsCollector().decrementActiveTransactions();
+        }
+    }
+
+    public void beginTransaction(SocketChannel client) {
+        TransactionState state = getOrCreateState(client);
+        if (!state.isInTransaction()) {
+            state.beginTransaction();
+            serverContext.getMetricsCollector().incrementActiveTransactions();
+        }
+    }
+
+    public void endTransaction(SocketChannel client, boolean success) {
+        TransactionState state = clientStates.get(client);
+        if (state != null && state.isInTransaction()) {
+            state.clearTransaction();
+            serverContext.getMetricsCollector().decrementActiveTransactions();
+            if (!success) {
+                serverContext.getMetricsCollector().incrementFailedTransactions();
+            }
+        }
+    }
+
+    public void queueCommand(SocketChannel client, commands.core.Command command, commands.context.CommandContext context) {
+        TransactionState state = getOrCreateState(client);
+        if (state.isInTransaction()) {
+            state.queueCommand(command, context);
+            serverContext.getMetricsCollector().incrementTransactionCommands();
+        }
     }
 
     public void clearAll() {

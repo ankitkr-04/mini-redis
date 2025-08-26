@@ -64,9 +64,82 @@ public final class MetricsEndpoint implements HttpEndpoint {
 
     private String convertToPrometheusFormat(String infoMetrics) {
         StringBuilder prometheus = new StringBuilder();
-        prometheus.append("# Redis-like server metrics\n");
+        prometheus.append("# Redis-like server metrics (Redis Enterprise Compatible)\n");
+        prometheus.append("# HELP redis_info_metric Redis server metrics\n");
         prometheus.append("# TYPE redis_info_metric gauge\n");
 
+        var collector = serverContext.getMetricsHandler().getMetricsCollector();
+
+        // Add Redis Enterprise compatible endpoint metrics
+        prometheus.append("\n# HELP endpoint_client_connections Number of client connection establishment events\n");
+        prometheus.append("# TYPE endpoint_client_connections counter\n");
+        prometheus.append("endpoint_client_connections ").append(collector.getClientConnections()).append("\n");
+
+        prometheus.append("# HELP endpoint_client_disconnections Number of client disconnections\n");
+        prometheus.append("# TYPE endpoint_client_disconnections counter\n");
+        prometheus.append("endpoint_client_disconnections ").append(collector.getClientDisconnections()).append("\n");
+
+        prometheus.append("# HELP endpoint_read_requests Number of read requests\n");
+        prometheus.append("# TYPE endpoint_read_requests counter\n");
+        prometheus.append("endpoint_read_requests ").append(collector.getReadRequests()).append("\n");
+
+        prometheus.append("# HELP endpoint_write_requests Number of write requests\n");
+        prometheus.append("# TYPE endpoint_write_requests counter\n");
+        prometheus.append("endpoint_write_requests ").append(collector.getWriteRequests()).append("\n");
+
+        prometheus.append("# HELP endpoint_other_requests Number of other requests\n");
+        prometheus.append("# TYPE endpoint_other_requests counter\n");
+        prometheus.append("endpoint_other_requests ").append(collector.getOtherRequests()).append("\n");
+
+        // Add keyspace metrics
+        prometheus.append("\n# HELP redis_keyspace_read_hits Number of read operations accessing existing keyspace\n");
+        prometheus.append("# TYPE redis_keyspace_read_hits counter\n");
+        prometheus.append("redis_keyspace_read_hits ").append(collector.getKeyspaceReadHits()).append("\n");
+
+        prometheus.append(
+                "# HELP redis_keyspace_read_misses Number of read operations accessing non-existing keyspace\n");
+        prometheus.append("# TYPE redis_keyspace_read_misses counter\n");
+        prometheus.append("redis_keyspace_read_misses ").append(collector.getKeyspaceReadMisses()).append("\n");
+
+        prometheus.append("# HELP redis_keyspace_write_hits Number of write operations accessing existing keyspace\n");
+        prometheus.append("# TYPE redis_keyspace_write_hits counter\n");
+        prometheus.append("redis_keyspace_write_hits ").append(collector.getKeyspaceWriteHits()).append("\n");
+
+        prometheus.append(
+                "# HELP redis_keyspace_write_misses Number of write operations accessing non-existing keyspace\n");
+        prometheus.append("# TYPE redis_keyspace_write_misses counter\n");
+        prometheus.append("redis_keyspace_write_misses ").append(collector.getKeyspaceWriteMisses()).append("\n");
+
+        // Add key type distribution metrics
+        prometheus.append("\n# HELP redis_server_total_keys Total number of keys\n");
+        prometheus.append("# TYPE redis_server_total_keys gauge\n");
+        prometheus.append("redis_server_total_keys ").append(collector.getTotalKeys()).append("\n");
+
+        prometheus.append("# HELP redis_server_blocked_clients Count of clients waiting on blocking calls\n");
+        prometheus.append("# TYPE redis_server_blocked_clients gauge\n");
+        prometheus.append("redis_server_blocked_clients ").append(collector.getBlockedClients()).append("\n");
+
+        prometheus.append("# HELP redis_server_master_repl_offset Master replication offset\n");
+        prometheus.append("# TYPE redis_server_master_repl_offset gauge\n");
+        prometheus.append("redis_server_master_repl_offset ").append(collector.getMasterReplOffset()).append("\n");
+
+        // Add network metrics
+        prometheus.append("\n# HELP redis_server_total_net_input_bytes Total bytes received\n");
+        prometheus.append("# TYPE redis_server_total_net_input_bytes counter\n");
+        prometheus.append("redis_server_total_net_input_bytes ").append(collector.getTotalNetInputBytes()).append("\n");
+
+        prometheus.append("# HELP redis_server_total_net_output_bytes Total bytes sent\n");
+        prometheus.append("# TYPE redis_server_total_net_output_bytes counter\n");
+        prometheus.append("redis_server_total_net_output_bytes ").append(collector.getTotalNetOutputBytes())
+                .append("\n");
+
+        prometheus.append("# HELP redis_server_total_connections_received Total connections received\n");
+        prometheus.append("# TYPE redis_server_total_connections_received counter\n");
+        prometheus.append("redis_server_total_connections_received ").append(collector.getTotalConnectionsReceived())
+                .append("\n");
+
+        // Legacy metrics from INFO format
+        prometheus.append("\n# Legacy metrics from INFO format\n");
         String[] lines = infoMetrics.split("\\r?\\n");
         String currentSection = "";
 

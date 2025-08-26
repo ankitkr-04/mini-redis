@@ -18,6 +18,10 @@ public interface Command {
         return false;
     }
 
+    default boolean isReadCommand() {
+        return !isWriteCommand() && !isPubSubCommand() && !isReplicationCommand();
+    }
+
     default boolean isReplicationCommand() {
         return false;
     }

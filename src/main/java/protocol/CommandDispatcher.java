@@ -2,6 +2,8 @@ package protocol;
 
 import java.nio.ByteBuffer;
 import java.nio.channels.SocketChannel;
+import java.time.Duration;
+import java.time.Instant;
 
 import commands.context.CommandContext;
 import commands.core.Command;
@@ -96,11 +98,21 @@ public final class CommandDispatcher {
             boolean isPropagatedCommand,
             String[] rawArgs) {
 
+        // Start timing for latency measurement
+        Instant startTime = Instant.now();
+
         if (shouldQueueForTransaction(clientChannel, command, context)) {
             return ResponseBuilder.encode(ProtocolConstants.RESP_QUEUED);
         }
 
+        // Execute the command
         CommandResult result = command.execute(context);
+
+        // Calculate execution time
+        Duration executionTime = Duration.between(startTime, Instant.now());
+
+        // Record metrics based on command type and result
+        recordCommandMetrics(command, context, result, executionTime, isPropagatedCommand);
 
         handleAofLogging(result, command, isPropagatedCommand, context, rawArgs);
 
@@ -156,5 +168,44 @@ public final class CommandDispatcher {
             case CommandResult.Error(var message) -> ResponseBuilder.error(message);
             case CommandResult.Async() -> null; // No immediate response for async commands
         };
+    }
+
+    /**
+     * Record Redis Enterprise compatible metrics for command execution.
+     */
+    private void recordCommandMetrics(Command command, CommandContext context,
+            CommandResult result, Duration executionTime,
+            boolean isPropagatedCommand) {
+        if (isPropagatedCommand) {
+            return; // Don't double-count replicated commands
+        }
+
+        var metricsCollector = this.context.getMetricsCollector();
+        String commandName = context.getArgs()[0].toUpperCase();
+
+        // Classify command type for Redis Enterprise metrics
+        if (command.isReadCommand()) {
+            metricsCollector.recordReadCommand(commandName, executionTime);
+            metricsCollector.recordReadResponse();
+        } else if (command.isWriteCommand()) {
+            metricsCollector.recordWriteCommand(commandName, executionTime);
+            metricsCollector.recordWriteResponse();
+        } else {
+            metricsCollector.recordOtherCommand(commandName, executionTime);
+            metricsCollector.recordOtherResponse();
+        }
+
+        // Record errors
+        if (result instanceof CommandResult.Error) {
+            metricsCollector.recordError();
+        }
+
+        // Record replication metrics if this is a master
+        if (command.isWriteCommand() && !context.getServerContext().getConfig().isReplicaMode()) {
+            var replicationManager = context.getServerContext().getReplicationManager();
+            if (replicationManager.hasConnectedReplicas()) {
+                metricsCollector.recordReplicationCommand();
+            }
+        }
     }
 }

@@ -13,6 +13,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import protocol.ResponseBuilder;
+import server.ServerContext;
 
 public final class ReplicationManager {
     private static final Logger log = LoggerFactory.getLogger(ReplicationManager.class);
@@ -24,22 +25,34 @@ public final class ReplicationManager {
 
     private final ConcurrentHashMap<SocketChannel, AtomicLong> replicaOffsets = new ConcurrentHashMap<>();
     private final ReplicationState replicationState;
+    private final ServerContext serverContext;
 
-    public ReplicationManager(ReplicationState replicationState) {
+    public ReplicationManager(ReplicationState replicationState, ServerContext serverContext) {
         this.replicationState = replicationState;
+        this.serverContext = serverContext;
     }
 
     public void addReplica(SocketChannel channel) {
         replicaOffsets.put(channel, new AtomicLong(0));
         replicationState.incrementSlaves();
+        serverContext.getMetricsCollector().incrementReplicaConnections();
         log.info("Added replica: {}, total: {}", getChannelInfo(channel), replicaOffsets.size());
     }
 
     public void removeReplica(SocketChannel channel) {
         if (replicaOffsets.remove(channel) != null) {
             replicationState.decrementSlaves();
+            serverContext.getMetricsCollector().decrementReplicaConnections();
             log.info("Removed replica: {}, total: {}", getChannelInfo(channel), replicaOffsets.size());
         }
+    }
+
+    public boolean hasConnectedReplicas() {
+        return !replicaOffsets.isEmpty();
+    }
+
+    public int getConnectedReplicasCount() {
+        return replicaOffsets.size();
     }
 
     public void propagateCommand(String[] commandArgs) {
@@ -52,6 +65,7 @@ public final class ReplicationManager {
 
         failedChannels.forEach(this::removeReplica);
         replicationState.incrementReplicationOffset(ReplicationProtocol.calculateCommandSize(commandArgs));
+        serverContext.getMetricsCollector().incrementReplicationCommandsSent();
     }
 
     public void updateReplicaOffset(SocketChannel channel, long offset) {

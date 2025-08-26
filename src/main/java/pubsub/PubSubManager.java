@@ -12,6 +12,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Pattern;
 
 import protocol.ResponseBuilder;
+import server.ServerContext;
 
 public class PubSubManager {
     private final Map<SocketChannel, PubSubState> clientStates = new ConcurrentHashMap<>();
@@ -19,6 +20,12 @@ public class PubSubManager {
     // Global subscription tracking for efficient publishing
     private final Map<String, Set<SocketChannel>> channelSubscribers = new ConcurrentHashMap<>();
     private final Map<String, Set<SocketChannel>> patternSubscribers = new ConcurrentHashMap<>();
+    
+    private final ServerContext serverContext;
+
+    public PubSubManager(ServerContext serverContext) {
+        this.serverContext = serverContext;
+    }
 
     public PubSubState getOrCreateState(SocketChannel client) {
         if (client == null) {
@@ -94,10 +101,16 @@ public class PubSubManager {
 
         for (String channel : channels) {
             if (channel != null && !channel.isEmpty()) {
+                boolean isNewChannel = !channelSubscribers.containsKey(channel);
                 state.subscribeChannel(channel);
 
                 // Update global tracking
                 channelSubscribers.computeIfAbsent(channel, _ -> ConcurrentHashMap.newKeySet()).add(client);
+                
+                // Track active channels metrics
+                if (isNewChannel) {
+                    serverContext.getMetricsCollector().incrementActiveChannels();
+                }
             }
         }
     }
@@ -253,6 +266,9 @@ public class PubSubManager {
                 }
             }
         }
+        
+        // Record metrics for published message
+        serverContext.getMetricsCollector().incrementMessagesPublished();
     }
 
     /**
