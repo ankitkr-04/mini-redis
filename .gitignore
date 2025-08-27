@@ -44,3 +44,11 @@ mvnw.cmd
 # Redis specific runtime
 dump.rdb
 appendonly.aof
+
+
+docs/interview-questions.md
+
+# Sonar Lint 
+sonar-project.properties
+.idea/sonarlint/
+.scannerwork
