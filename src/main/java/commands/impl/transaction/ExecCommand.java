@@ -125,8 +125,10 @@ public final class ExecCommand extends WriteCommand {
      */
     private ByteBuffer mapResultToResponse(CommandResult result) {
         return switch (result) {
+
             case CommandResult.Success success -> success.response();
             case CommandResult.Error error -> ResponseBuilder.error(error.message());
+            case CommandResult.MultiSuccess multiSuccess -> ResponseBuilder.merge(multiSuccess.responses());
             case CommandResult.Async _ -> ResponseBuilder.error(ErrorCode.BLOCKING_IN_TRANSACTION.getMessage());
         };
     }

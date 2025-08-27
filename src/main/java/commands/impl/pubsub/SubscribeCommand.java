@@ -1,5 +1,7 @@
 package commands.impl.pubsub;
 
+import java.nio.ByteBuffer;
+import java.util.ArrayList;
 import java.util.List;
 
 import org.slf4j.Logger;
@@ -40,33 +42,28 @@ public class SubscribeCommand extends PubSubCommand {
 
     @Override
     protected CommandResult executeInternal(CommandContext context) {
-        boolean isPatternSubscribe = PATTERN_COMMAND_NAME.equalsIgnoreCase(context.getOperation());
-        List<String> channelsOrPatterns = context.getSlice(1, context.getArgCount());
-
-        var pubSubManager = context.getServerContext().getPubSubManager();
+        List<String> channels = context.getSlice(1, context.getArgCount());
         var clientChannel = context.getClientChannel();
+        var pubSubManager = context.getServerContext().getPubSubManager();
 
-        if (isPatternSubscribe) {
-            pubSubManager.psubscribe(clientChannel, channelsOrPatterns);
-            LOGGER.debug("Client {} psubscribed to patterns: {}", clientChannel, channelsOrPatterns);
-        } else {
-            pubSubManager.subscribe(clientChannel, channelsOrPatterns);
-            LOGGER.debug("Client {} subscribed to channels: {}", clientChannel, channelsOrPatterns);
+        if (channels.isEmpty()) {
+            return CommandResult.async(); // no-op, stay in pubsub mode
         }
 
-        // Send acknowledgment for each subscription
-        for (String channelOrPattern : channelsOrPatterns) {
-            String responseType = isPatternSubscribe ? PSUBSCRIBE_RESPONSE_TYPE : SUBSCRIBE_RESPONSE_TYPE;
+        List<ByteBuffer> replies = new ArrayList<>();
+        for (String channel : channels) {
+            pubSubManager.subscribe(clientChannel, List.of(channel));
             int subscriptionCount = pubSubManager.subscriptionCount(clientChannel);
 
             var ack = ResponseBuilder.arrayOfBuffers(List.of(
-                    ResponseBuilder.bulkString(responseType),
-                    ResponseBuilder.bulkString(channelOrPattern),
+                    ResponseBuilder.bulkString("subscribe"),
+                    ResponseBuilder.bulkString(channel),
                     ResponseBuilder.integer(subscriptionCount)));
 
-            return CommandResult.success(ack);
+            replies.add(ack);
         }
 
-        return CommandResult.async();
+        return CommandResult.success(replies);
     }
+
 }

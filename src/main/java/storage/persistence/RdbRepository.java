@@ -26,10 +26,6 @@ import storage.types.StringValue;
  * Supports saving in RDB file format and restoring the in-memory store
  * from an existing snapshot file.
  * </p>
- *
- * @author Ankit Kumar
- * @version 1.0
- * @since 1.0
  */
 public class RdbRepository implements PersistentRepository {
 
@@ -75,7 +71,8 @@ public class RdbRepository implements PersistentRepository {
                 switch (value.type()) {
                     case STRING -> writeStringValue(out, (StringValue) value);
                     case LIST -> writeListValue(out, (ListValue) value);
-                    default -> throw new IllegalStateException("Unsupported value type: " + value.type());
+                    default -> throw new PersistenceException(
+                            "Unsupported value type: " + value.type());
                 }
             }
 
@@ -85,7 +82,7 @@ public class RdbRepository implements PersistentRepository {
             LOGGER.info("Snapshot saved successfully at {}", rdbFile.getAbsolutePath());
         } catch (IOException e) {
             LOGGER.error("Failed to save RDB snapshot", e);
-            throw new RuntimeException("Failed to save RDB snapshot: " + e.getMessage(), e);
+            throw new PersistenceException("Failed to save RDB snapshot", e);
         }
     }
 
@@ -108,7 +105,8 @@ public class RdbRepository implements PersistentRepository {
             validateHeader(in);
             store.clear();
 
-            while (true) {
+            boolean eofReached = false;
+            while (!eofReached) {
                 int type = in.readByte() & 0xFF;
                 Long expiryTimeMs = null;
 
@@ -124,23 +122,23 @@ public class RdbRepository implements PersistentRepository {
 
                 if (type == ProtocolConstants.RDB_OPCODE_EOF) {
                     LOGGER.info("RDB snapshot loaded successfully, {} keys restored", store.size());
-                    break;
-                }
-
-                if (handleSpecialOpCodes(in, type)) {
+                    eofReached = true;
                     continue;
                 }
 
-                String key = readEntry(in);
-                StoredValue<?> value = switch (type) {
-                    case ProtocolConstants.RDB_KEY_INDICATOR, ProtocolConstants.RDB_STRING_VALUE_INDICATOR ->
-                        readStringValue(in, expiryTimeMs);
-                    case ProtocolConstants.RDB_LIST_VALUE_INDICATOR ->
-                        readListValue(in, expiryTimeMs);
-                    default -> throw new IOException("Unknown value type: " + type);
-                };
+                if (!handleSpecialOpCodes(in, type)) {
+                    String key = readEntry(in);
+                    StoredValue<?> value = switch (type) {
+                        case ProtocolConstants.RDB_KEY_INDICATOR,
+                                ProtocolConstants.RDB_STRING_VALUE_INDICATOR ->
+                            readStringValue(in, expiryTimeMs);
+                        case ProtocolConstants.RDB_LIST_VALUE_INDICATOR ->
+                            readListValue(in, expiryTimeMs);
+                        default -> throw new PersistenceException("Unknown value type: " + type);
+                    };
 
-                store.put(key, value);
+                    store.put(key, value);
+                }
             }
         }
     }
@@ -207,13 +205,13 @@ public class RdbRepository implements PersistentRepository {
     private void ensureParentDirectory(File file) {
         File parentDir = file.getParentFile();
         if (parentDir != null && !parentDir.exists() && !parentDir.mkdirs()) {
-            throw new IllegalArgumentException("Failed to create directories: " + file.getAbsolutePath());
+            throw new PersistenceException("Failed to create directories: " + file.getAbsolutePath());
         }
     }
 
     private void validateFile(File rdbFile) {
         if (!rdbFile.isFile()) {
-            throw new IllegalArgumentException("Invalid RDB file: " + rdbFile.getAbsolutePath());
+            throw new PersistenceException("Invalid RDB file: " + rdbFile.getAbsolutePath());
         }
     }
 

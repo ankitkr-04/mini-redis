@@ -39,6 +39,8 @@ public final class StorageService {
     private static final String TYPE_LIST = "list";
     private static final String TYPE_STREAM = "stream";
     private static final String TYPE_ZSET = "zset";
+    // private static final String TYPE_HASH = "hash";
+    // private static final String TYPE_SET = "set";
 
     private final Map<String, StoredValue<?>> store = new ConcurrentHashMap<>();
     private final StringRepository stringRepository;
@@ -309,7 +311,6 @@ public final class StorageService {
         }
     }
 
-
     public void purgeExpiredKeys() {
         long expiredCount = store.entrySet().stream()
                 .filter(entry -> entry.getValue().isExpired())
@@ -341,7 +342,11 @@ public final class StorageService {
                 case LIST -> metricsCollector.decrementKeyCount(TYPE_LIST);
                 case STREAM -> metricsCollector.decrementKeyCount(TYPE_STREAM);
                 case ZSET -> metricsCollector.decrementKeyCount(TYPE_ZSET);
+                // case HASH -> metricsCollector.decrementKeyCount(TYPE_HASH);
+                // case SET -> metricsCollector.decrementKeyCount(TYPE_SET);
                 default -> {
+                    LOGGER.warn("Unknown value type for metrics update: {}", deletedValue.type());
+
                 }
             }
         }

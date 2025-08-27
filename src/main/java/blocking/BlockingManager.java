@@ -11,6 +11,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicReference;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -39,10 +40,6 @@ public final class BlockingManager implements EventListener {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(BlockingManager.class);
 
-    // Validation messages
-    private static final String NULL_ARGUMENT_MESSAGE = "Argument cannot be null";
-    private static final String INVALID_ARGUMENT_MESSAGE = "Invalid argument provided";
-
     // Core data structures with improved initial capacities
     private final Map<String, Queue<BlockedClient>> waitingClients = new ConcurrentHashMap<>(
             BlockingConstants.INITIAL_WAITING_CLIENTS_CAPACITY);
@@ -52,7 +49,7 @@ public final class BlockingManager implements EventListener {
 
     // Dependencies
     private final StorageService storage;
-    private volatile TimeoutScheduler scheduler;
+    private final AtomicReference<TimeoutScheduler> schedulerRef = new AtomicReference<>(null);
 
     // State management
     private final AtomicBoolean isRunning = new AtomicBoolean(false);
@@ -78,9 +75,10 @@ public final class BlockingManager implements EventListener {
      * @param scheduler the timeout scheduler for cleanup operations
      */
     public void start(TimeoutScheduler scheduler) {
-        this.scheduler = Objects.requireNonNull(scheduler, "Scheduler cannot be null");
+        Objects.requireNonNull(scheduler, "Scheduler cannot be null");
 
         if (isRunning.compareAndSet(false, true)) {
+            schedulerRef.set(scheduler);
             scheduleNextCleanup();
             LOGGER.info("BlockingManager started successfully");
         } else {
@@ -93,6 +91,7 @@ public final class BlockingManager implements EventListener {
      */
     public void stop() {
         if (isRunning.compareAndSet(true, false)) {
+            schedulerRef.set(null);
             clear();
             LOGGER.info("BlockingManager stopped successfully");
         }
@@ -102,6 +101,7 @@ public final class BlockingManager implements EventListener {
      * Schedules the next cleanup operation to remove expired clients.
      */
     private void scheduleNextCleanup() {
+        TimeoutScheduler scheduler = schedulerRef.get();
         if (scheduler != null && isRunning.get() && cleanupScheduled.compareAndSet(false, true)) {
             scheduler.schedule(ServerConfig.CLEANUP_INTERVAL_MS, () -> {
                 try {
@@ -115,29 +115,6 @@ public final class BlockingManager implements EventListener {
                     }
                 }
             });
-        }
-    }
-
-    /**
-     * Blocks a client for list operations (BLPOP, BRPOP, etc.).
-     * 
-     * @param keys      the list keys to monitor
-     * @param client    the client channel to block
-     * @param timeoutMs optional timeout in milliseconds
-     */
-    public void blockClientForLists(List<String> keys, SocketChannel client, Optional<Long> timeoutMs) {
-        Objects.requireNonNull(keys, "Keys cannot be null");
-        Objects.requireNonNull(client, "Client channel cannot be null");
-        Objects.requireNonNull(timeoutMs, "Timeout optional cannot be null");
-
-        validateBlockingRequest(keys);
-
-        final ListBlockingContext context = new ListBlockingContext(keys);
-        blockClient(keys, client, timeoutMs, context);
-
-        if (LOGGER.isDebugEnabled()) {
-            LOGGER.debug("Blocked client for lists: keys={}, timeout={}",
-                    keys, timeoutMs.map(String::valueOf).orElse("indefinite"));
         }
     }
 
@@ -160,35 +137,6 @@ public final class BlockingManager implements EventListener {
     }
 
     /**
-     * Blocks a client for stream operations (XREAD BLOCK, etc.).
-     * 
-     * @param keys      the stream keys to monitor
-     * @param ids       the stream IDs to start from
-     * @param count     optional maximum entries per stream
-     * @param client    the client channel to block
-     * @param timeoutMs optional timeout in milliseconds
-     */
-    public void blockClientForStreams(List<String> keys, List<String> ids, Optional<Integer> count,
-            SocketChannel client, Optional<Long> timeoutMs) {
-        Objects.requireNonNull(keys, "Keys cannot be null");
-        Objects.requireNonNull(ids, "IDs cannot be null");
-        Objects.requireNonNull(count, "Count optional cannot be null");
-        Objects.requireNonNull(client, "Client channel cannot be null");
-        Objects.requireNonNull(timeoutMs, "Timeout optional cannot be null");
-
-        validateBlockingRequest(keys);
-
-        final StreamBlockingContext context = new StreamBlockingContext(keys, ids, count);
-        blockClient(keys, client, timeoutMs, context);
-
-        if (LOGGER.isDebugEnabled()) {
-            LOGGER.debug("Blocked client for streams: keys={}, ids={}, count={}, timeout={}",
-                    keys, ids, count.map(String::valueOf).orElse("unlimited"),
-                    timeoutMs.map(String::valueOf).orElse("indefinite"));
-        }
-    }
-
-    /**
      * Validates a blocking request for common constraints.
      */
     private void validateBlockingRequest(List<String> keys) {
@@ -200,11 +148,15 @@ public final class BlockingManager implements EventListener {
         }
     }
 
+    // Update the blockClient method in BlockingManager class:
+
     /**
      * Core method to block a client with the specified context.
+     * 
+     * @throws BlockingException if the client cannot be blocked
      */
     private void blockClient(List<String> keys, SocketChannel client, Optional<Long> timeoutMs,
-            BlockingContext<String> context) {
+            BlockingContext<String> context) throws BlockingException {
 
         if (!client.isOpen()) {
             LOGGER.warn("Attempting to block a closed client channel");
@@ -224,8 +176,63 @@ public final class BlockingManager implements EventListener {
 
         } catch (Exception e) {
             LOGGER.warn("Failed to block client", e);
-            throw new RuntimeException("Failed to block client", e);
+            throw new BlockingException("Failed to block client", e);
         }
+    }
+
+    // Update the calling methods to handle the checked exception:
+
+    /**
+     * Blocks a client for list operations (BLPOP, BRPOP, etc.).
+     * 
+     * @param keys      the list keys to monitor
+     * @param client    the client channel to block
+     * @param timeoutMs optional timeout in milliseconds
+     * @throws BlockingException if the client cannot be blocked
+     */
+    public void blockClientForLists(List<String> keys, SocketChannel client, Optional<Long> timeoutMs)
+            throws BlockingException {
+        Objects.requireNonNull(keys, "Keys cannot be null");
+        Objects.requireNonNull(client, "Client channel cannot be null");
+        Objects.requireNonNull(timeoutMs, "Timeout optional cannot be null");
+
+        validateBlockingRequest(keys);
+
+        final ListBlockingContext context = new ListBlockingContext(keys);
+        blockClient(keys, client, timeoutMs, context);
+
+        LOGGER.debug("Blocked client for lists: keys={}, timeout={}",
+                keys, timeoutMs.map(String::valueOf).orElse("indefinite"));
+
+    }
+
+    /**
+     * Blocks a client for stream operations (XREAD BLOCK, etc.).
+     * 
+     * @param keys      the stream keys to monitor
+     * @param ids       the stream IDs to start from
+     * @param count     optional maximum entries per stream
+     * @param client    the client channel to block
+     * @param timeoutMs optional timeout in milliseconds
+     * @throws BlockingException if the client cannot be blocked
+     */
+    public void blockClientForStreams(List<String> keys, List<String> ids, Optional<Integer> count,
+            SocketChannel client, Optional<Long> timeoutMs) throws BlockingException {
+        Objects.requireNonNull(keys, "Keys cannot be null");
+        Objects.requireNonNull(ids, "IDs cannot be null");
+        Objects.requireNonNull(count, "Count optional cannot be null");
+        Objects.requireNonNull(client, "Client channel cannot be null");
+        Objects.requireNonNull(timeoutMs, "Timeout optional cannot be null");
+
+        validateBlockingRequest(keys);
+
+        final StreamBlockingContext context = new StreamBlockingContext(keys, ids, count);
+        blockClient(keys, client, timeoutMs, context);
+
+        LOGGER.debug("Blocked client for streams: keys={}, ids={}, count={}, timeout={}",
+                keys, ids, count.map(String::valueOf).orElse("unlimited"),
+                timeoutMs.map(String::valueOf).orElse("indefinite"));
+
     }
 
     @Override
@@ -248,9 +255,9 @@ public final class BlockingManager implements EventListener {
     public void onDataRemoved(String key) {
         // For most blocking operations, data removal doesn't affect waiting clients
         // Subclasses can override this for specific behavior
-        if (LOGGER.isTraceEnabled()) {
-            LOGGER.trace("Data removed from key: {}", key);
-        }
+
+        LOGGER.trace("Data removed from key: {}", key);
+
     }
 
     /**
@@ -316,9 +323,9 @@ public final class BlockingManager implements EventListener {
         });
 
         if (removedCount.get() > 0) {
-            if (LOGGER.isDebugEnabled()) {
-                LOGGER.debug("Removed {} expired/disconnected clients", removedCount.get());
-            }
+
+            LOGGER.debug("Removed {} expired/disconnected clients", removedCount.get());
+
         }
     }
 

@@ -26,8 +26,7 @@ public class ReplconfCommand extends ReplicationCommand {
 
     private static final String COMMAND_NAME = "REPLCONF";
     private static final int MIN_ARGUMENTS = 3;
-    private static final String ERROR_KEY_VALUE_PAIRS = "REPLCONF requires key-value pairs";
-
+   
     private final Map<String, ReplconfHandler> replconfHandlers;
 
     public ReplconfCommand() {

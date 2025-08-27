@@ -1,5 +1,6 @@
 package commands.impl.pubsub;
 
+import java.nio.ByteBuffer;
 import java.util.List;
 
 import org.slf4j.Logger;
@@ -46,9 +47,13 @@ public class UnsubscribeCommand extends PubSubCommand {
 
         // If no arguments, unsubscribe from all; otherwise, unsubscribe from specified
         // targets
-        List<String> unsubscribeTargets = context.getArgCount() > 1
-                ? context.getSlice(1, context.getArgCount())
-                : null;
+        List<String> unsubscribeTargets;
+
+        if (context.getArgCount() > 1) {
+            unsubscribeTargets = context.getSlice(1, context.getArgCount());
+        } else {
+            unsubscribeTargets = null;
+        }
 
         if (isPatternUnsubscribe) {
             pubSubManager.punsubscribe(clientChannel, unsubscribeTargets);
@@ -63,6 +68,8 @@ public class UnsubscribeCommand extends PubSubCommand {
                         ? List.copyOf(pubSubManager.getOrCreateState(clientChannel).getSubscribedPatterns())
                         : List.copyOf(pubSubManager.getOrCreateState(clientChannel).getSubscribedChannels()));
 
+        // Build responses for all unsubscribed targets
+        List<ByteBuffer> responses = new java.util.ArrayList<>();
         for (String unsubscribed : unsubscribedList) {
             String responseKind = isPatternUnsubscribe ? PUNSUBSCRIBE_KIND : UNSUBSCRIBE_KIND;
             int remainingSubscriptions = pubSubManager.subscriptionCount(clientChannel);
@@ -71,11 +78,15 @@ public class UnsubscribeCommand extends PubSubCommand {
                     ResponseBuilder.bulkString(responseKind),
                     ResponseBuilder.bulkString(unsubscribed),
                     ResponseBuilder.integer(remainingSubscriptions)));
-            // Only log at debug level for traceability
+
             logger.debug("Client {} unsubscribed from {}: {}", clientChannel, responseKind, unsubscribed);
-            return CommandResult.success(response);
+
+            responses.add(response);
         }
 
-        return CommandResult.async(); // responses sent directly
+        // Return all at once using multi-success
+        return responses.isEmpty()
+                ? CommandResult.async()
+                : CommandResult.success(responses);
     }
 }

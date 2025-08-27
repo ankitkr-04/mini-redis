@@ -194,7 +194,7 @@ public final class ReplicationManager {
             boolean satisfied = syncedReplicas >= wait.requiredReplicas;
 
             if (timedOut || satisfied) {
-                sendCurrentCount(wait.clientChannel, wait.requiredReplicas, wait.requiredOffset);
+                sendCurrentCount(wait.clientChannel, wait.requiredOffset);
                 completedWaits.add(wait);
             }
         }
@@ -205,10 +205,9 @@ public final class ReplicationManager {
      * Sends the current number of synced replicas to the client.
      * 
      * @param clientChannel    the client's socket channel
-     * @param requiredReplicas number of replicas requested
      * @param requiredOffset   offset requested
      */
-    public void sendCurrentCount(SocketChannel clientChannel, int requiredReplicas, long requiredOffset) {
+    public void sendCurrentCount(SocketChannel clientChannel, long requiredOffset) {
         int syncedReplicas = getSyncReplicasCount(requiredOffset);
         try {
             ReplicationProtocol.sendResponse(clientChannel, ResponseBuilder.integer(syncedReplicas));

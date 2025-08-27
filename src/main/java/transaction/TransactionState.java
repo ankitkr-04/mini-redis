@@ -41,6 +41,34 @@ public final class TransactionState {
      * @param rawArgs   The raw arguments
      */
     public record QueuedCommand(Command command, String operation, String[] rawArgs) {
+
+        @Override
+        public boolean equals(Object o) {
+            if (this == o)
+                return true;
+            if (!(o instanceof QueuedCommand other))
+                return false;
+            return command.equals(other.command)
+                    && operation.equals(other.operation)
+                    && java.util.Arrays.equals(rawArgs, other.rawArgs);
+        }
+
+        @Override
+        public int hashCode() {
+            int result = command.hashCode();
+            result = 31 * result + operation.hashCode();
+            result = 31 * result + java.util.Arrays.hashCode(rawArgs);
+            return result;
+        }
+
+        @Override
+        public String toString() {
+            return "QueuedCommand{" +
+                    "command=" + command +
+                    ", operation='" + operation + '\'' +
+                    ", rawArgs=" + java.util.Arrays.toString(rawArgs) +
+                    '}';
+        }
     }
 
     /**

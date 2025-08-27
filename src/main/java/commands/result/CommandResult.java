@@ -1,6 +1,7 @@
 package commands.result;
 
 import java.nio.ByteBuffer;
+import java.util.List;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -13,7 +14,7 @@ import org.slf4j.LoggerFactory;
  * @version 1.0
  */
 public sealed interface CommandResult
-        permits CommandResult.Success, CommandResult.Error, CommandResult.Async {
+        permits CommandResult.Success, CommandResult.Error, CommandResult.Async, CommandResult.MultiSuccess {
 
     Logger LOGGER = LoggerFactory.getLogger(CommandResult.class);
 
@@ -30,6 +31,23 @@ public sealed interface CommandResult
             LOGGER.debug("Success response created.");
         }
         return new Success(response);
+    }
+
+    /**
+     * Creates a successful command result with multiple responses.
+     * Useful for commands that return multiple values.
+     * 
+     * @param responses
+     * @return
+     */
+
+    static CommandResult success(List<ByteBuffer> responses) {
+        if (responses == null || responses.isEmpty()) {
+            LOGGER.warn("MultiSuccess response is empty.");
+        } else {
+            LOGGER.debug("MultiSuccess with {} responses created.", responses.size());
+        }
+        return new MultiSuccess(responses);
     }
 
     /**
@@ -104,5 +122,14 @@ public sealed interface CommandResult
      * Represents an async command result.
      */
     record Async() implements CommandResult {
+    }
+
+    /**
+     * Represents a successful command result with multiple responses.
+     * 
+     * @param responses the list of response ByteBuffers
+     */
+
+    record MultiSuccess(List<ByteBuffer> responses) implements CommandResult {
     }
 }

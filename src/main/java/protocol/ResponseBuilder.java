@@ -70,6 +70,27 @@ public final class ResponseBuilder {
     }
 
     /**
+     * 
+     * @param buffers
+     * @return
+     */
+    public static ByteBuffer merge(List<ByteBuffer> buffers) {
+        if (buffers == null || buffers.isEmpty()) {
+            return encode(ARRAY_PREFIX + "0" + CRLF);
+        }
+
+        int totalSize = calculateTotalSize(buffers);
+        ByteBuffer resultBuffer = ByteBuffer.allocate(totalSize);
+
+        for (ByteBuffer buffer : buffers) {
+            resultBuffer.put(buffer.duplicate());
+        }
+
+        resultBuffer.flip();
+        return resultBuffer;
+    }
+
+    /**
      * Encodes a bulk string response.
      * 
      * @param value the string value, or null for nil

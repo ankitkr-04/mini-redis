@@ -6,9 +6,6 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.concurrent.locks.StampedLock;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import config.ProtocolConstants;
 
 /**
@@ -21,9 +18,6 @@ import config.ProtocolConstants;
  * @version 1.0
  */
 public final class QuickList<T> implements Iterable<T> {
-
-    /** SLF4J Logger instance for QuickList */
-    private static final Logger LOGGER = LoggerFactory.getLogger(QuickList.class);
 
     /** Capacity of each node in the QuickList */
     private static final int NODE_CAPACITY = ProtocolConstants.LIST_NODE_CAPACITY;
@@ -39,7 +33,8 @@ public final class QuickList<T> implements Iterable<T> {
         final Object[] elements = new Object[NODE_CAPACITY];
         int start = NODE_INITIAL_INDEX;
         int end = NODE_INITIAL_INDEX;
-        Node<T> prev, next;
+        Node<T> prev;
+        Node<T> next;
 
         int size() {
             return end - start;
@@ -58,7 +53,8 @@ public final class QuickList<T> implements Iterable<T> {
         }
     }
 
-    private Node<T> head, tail;
+    private Node<T> head;
+    private Node<T> tail;
     private int totalSize = 0;
     private final StampedLock lock = new StampedLock();
 
@@ -287,13 +283,13 @@ public final class QuickList<T> implements Iterable<T> {
         int currentIndex = 0;
         Node<T> current = head;
         while (current != null && currentIndex <= end) {
-            for (int i = current.start; i < current.end && currentIndex <= end; i++) {
+            for (int i = current.start; i < current.end && currentIndex <= end; i++, currentIndex++) {
                 if (currentIndex >= start) {
                     @SuppressWarnings("unchecked")
                     T value = (T) current.elements[i];
                     result.add(value);
                 }
-                currentIndex++;
+
             }
             current = current.next;
         }

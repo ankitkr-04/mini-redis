@@ -82,7 +82,7 @@ public final class ReplicationProtocol {
      * @return the size in bytes
      */
     public static long calculateCommandSize(String[] commandArgs) {
-        long totalSize = 1 + String.valueOf(commandArgs.length).length() + 2; // *<count>\r\n
+        long totalSize = 1 + (long) String.valueOf(commandArgs.length).length() + 2; // *<count>\r\n
         for (String argument : commandArgs) {
             totalSize += 1 + String.valueOf(argument.length()).length() + 2 + argument.length() + 2; // $<len>\r\n<arg>\r\n
         }

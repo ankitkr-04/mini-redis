@@ -23,6 +23,9 @@ public final class CommandValidator {
     private CommandValidator() {
     }
 
+    /** Shared error message fragment for argument validation. */
+    private static final String ARGUMENTS_GOT = " arguments, got ";
+
     /**
      * Functional interface for context-aware command validation.
      */
@@ -79,7 +82,7 @@ public final class CommandValidator {
             int actualCount = context.getArgCount();
             if (actualCount != expectedCount) {
                 return ValidationResult.invalid(
-                        "Expected " + expectedCount + " arguments, got " + actualCount);
+                        "Expected " + expectedCount + ARGUMENTS_GOT + actualCount);
             }
             return ValidationResult.valid();
         };
@@ -93,7 +96,7 @@ public final class CommandValidator {
             int actualCount = context.getArgCount();
             if (actualCount < minCount || actualCount > maxCount) {
                 return ValidationResult.invalid(
-                        "Expected " + minCount + "-" + maxCount + " arguments, got " + actualCount);
+                        "Expected " + minCount + "-" + maxCount + ARGUMENTS_GOT + actualCount);
             }
             return ValidationResult.valid();
         };
@@ -107,7 +110,7 @@ public final class CommandValidator {
             int actualCount = context.getArgCount();
             if (actualCount < minCount) {
                 return ValidationResult.invalid(
-                        "Expected at least " + minCount + " arguments, got " + actualCount);
+                        "Expected at least " + minCount + ARGUMENTS_GOT + actualCount);
             }
             return ValidationResult.valid();
         };

@@ -16,6 +16,8 @@ import org.slf4j.LoggerFactory;
 public final class ConfigurationParser {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(ConfigurationParser.class);
+    private static final String OPTION_MAP_CANNOT_BE_NULL = "Options map cannot be null";
+    private static final String KEY_CANNOT_BE_NULL = "Key cannot be null";
 
     // Valid configuration options
     private static final Set<String> VALID_OPTIONS = Set.of(
@@ -41,30 +43,30 @@ public final class ConfigurationParser {
 
         final Map<String, String> options = new HashMap<>();
         final Map<String, String> errors = new HashMap<>();
-        for (int i = 0; i < args.length; i++) {
+        int i = 0;
+        while (i < args.length) {
             final String arg = args[i];
 
-            if (!arg.startsWith(ServerConfig.OPTION_PREFIX)) {
-                continue;
+            if (arg.startsWith(ServerConfig.OPTION_PREFIX)) {
+                final String key = arg.substring(ServerConfig.OPTION_PREFIX_LENGTH).toLowerCase();
+
+                if (!VALID_OPTIONS.contains(key)) {
+                    final String errorMsg = String.format("Unknown option: %s", key);
+                    errors.put(key, errorMsg);
+                    LOGGER.warn(errorMsg);
+                    i++;
+                } else if (i + 1 >= args.length || args[i + 1].startsWith(ServerConfig.OPTION_PREFIX)) {
+                    final String errorMsg = String.format("Missing value for option: %s", key);
+                    errors.put(key, errorMsg);
+                    LOGGER.warn(errorMsg);
+                    i++;
+                } else {
+                    options.put(key, args[i + 1]);
+                    i += 2; // safely skip the value
+                }
+            } else {
+                i++;
             }
-
-            final String key = arg.substring(ServerConfig.OPTION_PREFIX_LENGTH).toLowerCase();
-
-            if (!VALID_OPTIONS.contains(key)) {
-                final String errorMsg = String.format("Unknown option: %s", key);
-                errors.put(key, errorMsg);
-                LOGGER.warn(errorMsg);
-                continue;
-            }
-
-            if (i + 1 >= args.length || args[i + 1].startsWith(ServerConfig.OPTION_PREFIX)) {
-                final String errorMsg = String.format("Missing value for option: %s", key);
-                errors.put(key, errorMsg);
-                LOGGER.warn(errorMsg);
-                continue;
-            }
-
-            options.put(key, args[++i]);
         }
 
         return new ParseResult(Map.copyOf(options), Map.copyOf(errors));
@@ -79,8 +81,8 @@ public final class ConfigurationParser {
      * @return the parsed integer value or default
      */
     public static int getIntOption(Map<String, String> options, String key, int defaultValue) {
-        Objects.requireNonNull(options, "Options map cannot be null");
-        Objects.requireNonNull(key, "Key cannot be null");
+        Objects.requireNonNull(options, OPTION_MAP_CANNOT_BE_NULL);
+        Objects.requireNonNull(key, KEY_CANNOT_BE_NULL);
 
         final String value = options.get(key);
         if (value == null) {
@@ -106,8 +108,8 @@ public final class ConfigurationParser {
      * @return the parsed long value or default
      */
     public static long getLongOption(Map<String, String> options, String key, long defaultValue) {
-        Objects.requireNonNull(options, "Options map cannot be null");
-        Objects.requireNonNull(key, "Key cannot be null");
+        Objects.requireNonNull(options, OPTION_MAP_CANNOT_BE_NULL);
+        Objects.requireNonNull(key, KEY_CANNOT_BE_NULL);
 
         final String value = options.get(key);
         if (value == null) {
@@ -133,8 +135,8 @@ public final class ConfigurationParser {
      * @return the string value or default
      */
     public static String getStringOption(Map<String, String> options, String key, String defaultValue) {
-        Objects.requireNonNull(options, "Options map cannot be null");
-        Objects.requireNonNull(key, "Key cannot be null");
+        Objects.requireNonNull(options, OPTION_MAP_CANNOT_BE_NULL);
+        Objects.requireNonNull(key, KEY_CANNOT_BE_NULL);
 
         final String value = options.get(key);
         return value != null ? value.trim() : defaultValue;
@@ -149,8 +151,8 @@ public final class ConfigurationParser {
      * @return the parsed boolean value or default
      */
     public static boolean getBooleanOption(Map<String, String> options, String key, boolean defaultValue) {
-        Objects.requireNonNull(options, "Options map cannot be null");
-        Objects.requireNonNull(key, "Key cannot be null");
+        Objects.requireNonNull(options, OPTION_MAP_CANNOT_BE_NULL);
+        Objects.requireNonNull(key, KEY_CANNOT_BE_NULL);
 
         final String value = options.get(key);
         if (value == null) {
@@ -176,8 +178,8 @@ public final class ConfigurationParser {
      * @return Optional containing MasterInfo if valid, empty otherwise
      */
     public static Optional<MasterInfo> getMasterInfoOption(Map<String, String> options, String key) {
-        Objects.requireNonNull(options, "Options map cannot be null");
-        Objects.requireNonNull(key, "Key cannot be null");
+        Objects.requireNonNull(options, OPTION_MAP_CANNOT_BE_NULL);
+        Objects.requireNonNull(key, KEY_CANNOT_BE_NULL);
 
         final String value = options.get(key);
         if (value == null) {

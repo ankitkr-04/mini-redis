@@ -236,6 +236,7 @@ public final class CommandDispatcher {
 
     private ByteBuffer buildResponse(CommandResult result) {
         return switch (result) {
+            case CommandResult.MultiSuccess(var responses) -> ResponseBuilder.merge(responses);
             case CommandResult.Success(var response) -> response;
             case CommandResult.Error(var message) -> ResponseBuilder.error(message);
             case CommandResult.Async() -> null; // No immediate response for async commands

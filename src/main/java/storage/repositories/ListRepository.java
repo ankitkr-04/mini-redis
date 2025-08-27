@@ -22,9 +22,6 @@ public final class ListRepository implements Repository<QuickList<String>> {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(ListRepository.class);
 
-    /** Represents an empty list length. */
-    private static final int EMPTY_LIST_LENGTH = 0;
-
     private final Map<String, StoredValue<?>> store;
 
     public ListRepository(Map<String, StoredValue<?>> store) {

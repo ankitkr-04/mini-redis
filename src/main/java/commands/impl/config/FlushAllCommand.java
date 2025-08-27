@@ -13,7 +13,7 @@ import protocol.ResponseBuilder;
 
 public class FlushAllCommand extends WriteCommand {
 
-    Logger LOGGER = LoggerFactory.getLogger(FlushAllCommand.class);
+    private static final Logger logger = LoggerFactory.getLogger(FlushAllCommand.class);
 
     private static final String COMMAND_NAME = "FLUSHALL";
     private static final int MIN_ARG_COUNT = 1;
@@ -41,11 +41,11 @@ public class FlushAllCommand extends WriteCommand {
             var scheduler = context.getServerContext().getTimeoutScheduler();
             scheduler.schedule(DELAY_MILLIS, () -> {
                 try {
-                    LOGGER.info("Async Flush Started");
+                    logger.info("Async Flush Started");
                     context.getStorageService().clear();
-                    LOGGER.info("Async Flush Finished");
+                    logger.info("Async Flush Finished");
                 } catch (Exception e) {
-                    LOGGER.error("Async Flush failed", e);
+                    logger.error("Async Flush failed", e);
                 }
             });
 
