@@ -247,4 +247,38 @@ public class AofRepository implements PersistentRepository {
             throw new IllegalArgumentException("Failed to create directories: " + file.getAbsolutePath());
         }
     }
+
+    /**
+     * Clears the AOF file by closing the current writer, deleting the file,
+     * and creating a new empty AOF file with a fresh writer.
+     */
+    public void clear() {
+        lock.writeLock().lock();
+        try {
+            if (aofWriter != null) {
+                aofWriter.flush();
+                aofWriter.close();
+                aofWriter = null;
+            }
+
+            if (aofFile != null && aofFile.exists()) {
+                if (!aofFile.delete()) {
+                    LOGGER.warn("Failed to delete AOF file: {}", aofFile.getAbsolutePath());
+                }
+            }
+
+            // Recreate empty AOF file
+            if (aofFile != null) {
+                ensureParentDirectory(aofFile);
+                aofFile.createNewFile();
+                aofWriter = new BufferedWriter(new FileWriter(aofFile, true));
+                LOGGER.info("AOF file cleared and recreated: {}", aofFile.getAbsolutePath());
+            }
+        } catch (IOException e) {
+            LOGGER.error("Error while clearing AOF file", e);
+        } finally {
+            lock.writeLock().unlock();
+        }
+    }
+
 }

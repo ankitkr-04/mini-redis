@@ -30,6 +30,7 @@ import commands.impl.sortedsets.ZScoreCommand;
 import commands.impl.streams.AddStreamCommand;
 import commands.impl.streams.RangeStreamCommand;
 import commands.impl.streams.ReadStreamCommand;
+import commands.impl.strings.DecrCommand;
 import commands.impl.strings.GetCommand;
 import commands.impl.strings.IncrCommand;
 import commands.impl.strings.SetCommand;
@@ -107,6 +108,7 @@ public final class CommandFactory {
         registry.register(new GetCommand());
         registry.register(new SetCommand());
         registry.register(new IncrCommand());
+        registry.register(new DecrCommand());
     }
 
     private static void registerListCommands(CommandRegistry registry, ServerContext context) {

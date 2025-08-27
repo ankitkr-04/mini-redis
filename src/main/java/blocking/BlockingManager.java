@@ -38,11 +38,10 @@ import storage.StorageService;
 public final class BlockingManager implements EventListener {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(BlockingManager.class);
-    
+
     // Validation messages
     private static final String NULL_ARGUMENT_MESSAGE = "Argument cannot be null";
     private static final String INVALID_ARGUMENT_MESSAGE = "Invalid argument provided";
-
 
     // Core data structures with improved initial capacities
     private final Map<String, Queue<BlockedClient>> waitingClients = new ConcurrentHashMap<>(
@@ -140,6 +139,24 @@ public final class BlockingManager implements EventListener {
             LOGGER.debug("Blocked client for lists: keys={}, timeout={}",
                     keys, timeoutMs.map(String::valueOf).orElse("indefinite"));
         }
+    }
+
+    /**
+     * Handles store cleared event (e.g., FLUSHDB/FLUSHALL).
+     * Unblocks all clients immediately with a timeout-style response.
+     */
+    public void onStoreCleared() {
+        LOGGER.info("Store cleared, unblocking all {} clients", clientContexts.size());
+
+        waitingClients.values().forEach(queue -> queue.forEach(this::sendTimeoutResponse));
+
+        waitingClients.clear();
+        clientContexts.clear();
+
+        // reset metrics
+        totalBlockedClients.set(0);
+        totalTimeoutedClients.set(0);
+        totalSuccessfulUnblocks.set(0);
     }
 
     /**

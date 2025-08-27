@@ -296,4 +296,30 @@ public final class ServerContext implements EventPublisher {
     public void publishKeyModified(String key) {
         transactionManager.invalidateWatchingClients(key);
     }
+
+    @Override
+    public void publishStoreCleared() {
+        LOGGER.info("All keys cleared from store");
+
+        blockingManager.onStoreCleared();
+        transactionManager.invalidateAllWatchingClients();
+
+        // Clear AOF
+        AofRepository aof = getAofRepository();
+        if (aof != null) {
+            try {
+                aof.clear(); // implement clear in AofRepository
+                LOGGER.info("AOF cleared due to FLUSHALL");
+            } catch (Exception e) {
+                LOGGER.error("Failed to clear AOF during FLUSHALL", e);
+            }
+        }
+    }
+
+    @Override
+    public void publishExpiredKeysRemoved(int count) {
+        metricsCollector.incrementExpiredKeys(count); // or loop increment if only single increment API exists
+        LOGGER.debug("{} expired keys removed during cleanup", count);
+    }
+
 }

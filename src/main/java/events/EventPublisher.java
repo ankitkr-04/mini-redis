@@ -32,4 +32,17 @@ public interface EventPublisher {
      * @param key the key for which data was modified
      */
     void publishKeyModified(String key);
+
+    /**
+     * Publishes an event indicating that the entire store was cleared.
+     */
+    void publishStoreCleared();
+
+    /**
+     * Publishes an event indicating that expired keys have been removed.
+     *
+     * @param count the number of expired keys removed
+     */
+    void publishExpiredKeysRemoved(int count);
+
 }

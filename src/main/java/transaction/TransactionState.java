@@ -5,9 +5,6 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import commands.context.CommandContext;
 import commands.core.Command;
 
@@ -25,12 +22,6 @@ import commands.core.Command;
  */
 
 public final class TransactionState {
-
-    /**
-     * Logger instance for this class. Use for important transaction state changes
-     * or errors.
-     */
-    private static final Logger LOGGER = LoggerFactory.getLogger(TransactionState.class);
 
     /**
      * Error message for operations attempted outside a transaction.

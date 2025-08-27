@@ -62,10 +62,24 @@ public final class StringRepository implements Repository<String> {
         long val = parseLongValue(get(key).orElse("0"));
 
         if (val == Long.MAX_VALUE) {
-            throw new NumberFormatException("ERR increment or decrement would overflow");
+            throw new NumberFormatException("increment or decrement would overflow");
         }
 
         long newVal = val + 1;
+        put(key, Long.toString(newVal), ExpiryPolicy.never());
+        return newVal;
+    }
+
+    public long decrement(String key) {
+        ensureStringKeyExists(key);
+
+        long val = parseLongValue(get(key).orElse("0"));
+
+        if (val == Long.MIN_VALUE) {
+            throw new NumberFormatException("increment or decrement would overflow");
+        }
+
+        long newVal = val - 1;
         put(key, Long.toString(newVal), ExpiryPolicy.never());
         return newVal;
     }

@@ -129,6 +129,22 @@ public final class TransactionManager {
     }
 
     /**
+     * Invalidates all transactions for all clients,
+     * regardless of which keys they are watching.
+     * Useful when the entire store is cleared.
+     */
+    public void invalidateAllWatchingClients() {
+        for (Map.Entry<SocketChannel, TransactionState> entry : clientTransactionStates.entrySet()) {
+            TransactionState state = entry.getValue();
+            if (state.hasWatchedKeys()) {
+                state.invalidateTransaction();
+                LOGGER.debug("Invalidated transaction for client {} due to store clear", entry.getKey());
+            }
+        }
+        LOGGER.info("Invalidated all watching clients due to store clear.");
+    }
+
+    /**
      * Clears all transaction states for all clients.
      */
     public void clearAll() {

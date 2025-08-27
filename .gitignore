@@ -1,3 +1,46 @@
+# Compiled class files
+*.class
 *.jar
+
+# Build directories
 target/
+build/
+
+# IDE files
 .idea/
+.vscode/
+*.iml
+*.ipr
+*.iws
+
+# Eclipse
+.project
+.classpath
+.metadata
+.settings/
+
+# Runtime files
+logs/
+pids/
+data/
+*.log
+*.pid
+
+# OS specific
+.DS_Store
+Thumbs.db
+
+# Maven
+.mvn/
+mvnw
+mvnw.cmd
+
+# Temporary files
+*.tmp
+*.swp
+*.swo
+*~
+
+# Redis specific runtime
+dump.rdb
+appendonly.aof

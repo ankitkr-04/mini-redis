@@ -415,6 +415,10 @@ public final class MetricsCollector {
         expiredKeys.increment();
     }
 
+    public void incrementExpiredKeys(int count) {
+        evictedKeys.increment(count);
+    }
+
     public void incrementEvictedKeys() {
         evictedKeys.increment();
     }

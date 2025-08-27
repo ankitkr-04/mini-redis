@@ -111,6 +111,12 @@ public final class StorageService {
         return newValue;
     }
 
+    public long decrementString(String key) {
+        long newValue = stringRepository.decrement(key);
+        notifyKeyModified(key);
+        return newValue;
+    }
+
     /* ---------- List operations ---------- */
 
     public int leftPush(String key, String... values) {
@@ -296,10 +302,15 @@ public final class StorageService {
     }
 
     public void clear() {
+        store.values().forEach(this::updateDeleteMetrics);
         store.clear();
+        if (eventPublisher != null) {
+            eventPublisher.publishStoreCleared(); // optional event
+        }
     }
 
-    public void cleanup() {
+
+    public void purgeExpiredKeys() {
         long expiredCount = store.entrySet().stream()
                 .filter(entry -> entry.getValue().isExpired())
                 .count();
