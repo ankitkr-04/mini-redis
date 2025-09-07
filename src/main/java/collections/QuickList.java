@@ -268,28 +268,47 @@ public final class QuickList<T> implements Iterable<T> {
         return result;
     }
 
+    /**
+     * Internal range implementation with early termination and pre-sizing.
+     */
     private List<T> rangeImpl(int start, int end) {
         if (head == null || totalSize == 0)
             return List.of();
+            
+        // Normalize negative indices
         if (start < 0)
             start = totalSize + start;
         if (end < 0)
             end = totalSize + end;
+            
+        // Bounds validation with early exit
         start = Math.max(0, start);
         end = Math.min(totalSize - 1, end);
         if (start > end || start >= totalSize)
             return List.of();
+            
+        // Pre-size the result list for better memory allocation
         List<T> result = new ArrayList<>(end - start + 1);
         int currentIndex = 0;
         Node<T> current = head;
+        
+        // Traversal with early termination
         while (current != null && currentIndex <= end) {
-            for (int i = current.start; i < current.end && currentIndex <= end; i++, currentIndex++) {
+            final int nodeStart = current.start;
+            final int nodeEnd = current.end;
+            
+            for (int i = nodeStart; i < nodeEnd && currentIndex <= end; i++, currentIndex++) {
+                // Early termination - we've passed the end index
+                if (currentIndex > end) {
+                    return result;
+                }
+                
+                // Add to result if within range
                 if (currentIndex >= start) {
                     @SuppressWarnings("unchecked")
                     T value = (T) current.elements[i];
                     result.add(value);
                 }
-
             }
             current = current.next;
         }

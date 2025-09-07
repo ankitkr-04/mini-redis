@@ -116,34 +116,52 @@ public final class QuickZSet {
     }
 
     /**
-     * Returns a range of entries by index, supporting negative indices.
+     * Returns a range of entries by index with early termination.
      * 
      * @param start start index (inclusive), negative for offset from end
      * @param end   end index (inclusive), negative for offset from end
      * @return list of entries in the specified range
      */
     public List<ZSetEntry> range(int start, int end) {
-        int size = memberMap.size();
-        if (start < 0)
-            start += size;
-        if (end < 0)
-            end += size;
+        final int size = memberMap.size();
+        if (size == 0) {
+            return List.of();
+        }
+        
+        // Normalize negative indices
+        if (start < 0) start += size;
+        if (end < 0) end += size;
+        
+        // Bounds validation with early exit
         start = Math.max(0, start);
         end = Math.min(size - 1, end);
-        if (start > end)
+        if (start > end || start >= size) {
             return List.of();
+        }
 
-        List<ZSetEntry> result = new ArrayList<>(end - start + 1);
-        int idx = 0;
-        for (var entry : scoreMap.entrySet()) {
-            for (String member : entry.getValue()) {
-                if (idx > end)
+        // Pre-size the result list for better memory allocation
+        final List<ZSetEntry> result = new ArrayList<>(end - start + 1);
+        int currentIndex = 0;
+        
+        // Iteration with early termination
+        for (var scoreEntry : scoreMap.entrySet()) {
+            final double score = scoreEntry.getKey();
+            final ConcurrentSkipListSet<String> members = scoreEntry.getValue();
+            
+            for (String member : members) {
+                // Early termination - we've passed the end index
+                if (currentIndex > end) {
                     return result;
-                if (idx >= start)
-                    result.add(new ZSetEntry(member, entry.getKey()));
-                idx++;
+                }
+                
+                // Add to result if within range
+                if (currentIndex >= start) {
+                    result.add(new ZSetEntry(member, score));
+                }
+                currentIndex++;
             }
         }
+        
         return result;
     }
 
@@ -205,20 +223,30 @@ public final class QuickZSet {
         }
 
         long rank = 0;
+        
+        // Rank calculation with early termination
         for (var entry : scoreMap.entrySet()) {
-            if (entry.getKey().equals(memberScore)) {
+            final double currentScore = entry.getKey();
+            
+            if (currentScore > memberScore) {
+                // Early termination - scores are sorted, so we won't find our member
+                break;
+            }
+            
+            if (currentScore == memberScore) {
+                // Found the score bucket, search within it
                 for (String m : entry.getValue()) {
                     if (m.equals(member)) {
                         return rank;
                     }
                     rank++;
                 }
-            } else if (entry.getKey() < memberScore) {
-                rank += entry.getValue().size();
             } else {
-                break;
+                // Add all members from lower score buckets
+                rank += entry.getValue().size();
             }
         }
+        
         return null;
     }
 

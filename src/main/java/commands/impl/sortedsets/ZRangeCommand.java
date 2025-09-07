@@ -66,16 +66,29 @@ public class ZRangeCommand extends ReadCommand {
         var storageService = context.getStorageService();
         List<QuickZSet.ZSetEntry> zsetEntries = storageService.zRange(key, startIndex, stopIndex);
 
-        List<String> responseList = new ArrayList<>();
-        for (QuickZSet.ZSetEntry zsetEntry : zsetEntries) {
-            responseList.add(zsetEntry.member());
-            if (includeScores) {
-                responseList.add(String.valueOf(zsetEntry.score()));
+        // Pre-calculate response size and reduce allocations
+        final int expectedSize = includeScores ? zsetEntries.size() * 2 : zsetEntries.size();
+        final List<String> responseList = new ArrayList<>(expectedSize);
+
+        // Response building with reduced string operations
+        if (includeScores) {
+            for (QuickZSet.ZSetEntry entry : zsetEntries) {
+                responseList.add(entry.member());
+                // Score formatting - avoid unnecessary string operations
+                double score = entry.score();
+                responseList.add(score == (long) score ? 
+                    String.valueOf((long) score) : 
+                    String.valueOf(score));
+            }
+        } else {
+            // Simple member-only response
+            for (QuickZSet.ZSetEntry entry : zsetEntries) {
+                responseList.add(entry.member());
             }
         }
 
-        LOGGER.debug("ZRANGE executed for key '{}', start {}, stop {}, withScores: {}", key, startIndex, stopIndex,
-                includeScores);
+        LOGGER.debug("ZRANGE executed for key '{}', start {}, stop {}, withScores: {}, returned {} entries", 
+                     key, startIndex, stopIndex, includeScores, zsetEntries.size());
 
         return CommandResult.success(ResponseBuilder.array(responseList));
     }

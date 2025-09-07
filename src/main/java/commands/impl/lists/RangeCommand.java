@@ -39,7 +39,14 @@ public final class RangeCommand extends ReadCommand {
         int startIndex = context.getIntArg(ARG_INDEX_START);
         int endIndex = context.getIntArg(ARG_INDEX_END);
 
+        // Direct call to range method
         var subList = context.getStorageService().getListRange(key, startIndex, endIndex);
+        
+        // Early return for empty results to avoid unnecessary response building
+        if (subList.isEmpty()) {
+            return CommandResult.success(ResponseBuilder.array(subList));
+        }
+
         return CommandResult.success(ResponseBuilder.array(subList));
     }
 }
