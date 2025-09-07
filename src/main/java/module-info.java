@@ -1,6 +1,6 @@
 module redis {
     requires transitive org.slf4j;
-    requires transitive org.slf4j.simple;
+    requires transitive ch.qos.logback.classic;
     requires transitive micrometer.core;
     requires micrometer.registry.prometheus;
     requires io.prometheus.metrics.core;

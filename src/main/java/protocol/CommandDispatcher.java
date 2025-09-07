@@ -16,7 +16,6 @@ import commands.impl.transaction.ExecCommand;
 import commands.impl.transaction.MultiCommand;
 import commands.registry.CommandRegistry;
 import commands.result.CommandResult;
-import config.ProtocolConstants;
 import errors.ErrorCode;
 import pubsub.PubSubManager;
 import server.ServerContext;
@@ -62,11 +61,11 @@ public final class CommandDispatcher {
      * @param pubSubManager      the pub/sub manager for subscription handling
      * @param context            the server context containing shared resources
      */
-    public CommandDispatcher(CommandRegistry registry,
-            StorageService storage,
-            TransactionManager transactionManager,
-            PubSubManager pubSubManager,
-            ServerContext context) {
+    public CommandDispatcher(final CommandRegistry registry,
+            final StorageService storage,
+            final TransactionManager transactionManager,
+            final PubSubManager pubSubManager,
+            final ServerContext context) {
         this.registry = registry;
         this.storage = storage;
         this.pubSubManager = pubSubManager;
@@ -81,7 +80,7 @@ public final class CommandDispatcher {
      * @param clientChannel the client socket channel
      * @return the response buffer, or null if no response needed
      */
-    public ByteBuffer dispatch(String[] rawArgs, SocketChannel clientChannel) {
+    public ByteBuffer dispatch(final String[] rawArgs, final SocketChannel clientChannel) {
         return dispatch(rawArgs, clientChannel, false);
     }
 
@@ -93,21 +92,21 @@ public final class CommandDispatcher {
      * @param isPropagatedCommand whether this is a propagated command from master
      * @return the response buffer, or null if no response needed
      */
-    public ByteBuffer dispatch(String[] rawArgs,
-            SocketChannel clientChannel,
-            boolean isPropagatedCommand) {
+    public ByteBuffer dispatch(final String[] rawArgs,
+            final SocketChannel clientChannel,
+            final boolean isPropagatedCommand) {
         if (!isValidCommandInput(rawArgs)) {
             return ResponseBuilder.error(ErrorCode.UNKNOWN_COMMAND.getMessage());
         }
 
-        String commandName = rawArgs[0].toUpperCase();
-        Command command = registry.getCommand(commandName);
+        final String commandName = rawArgs[0].toUpperCase();
+        final Command command = registry.getCommand(commandName);
 
         if (command == null) {
             return handleUnknownCommand(commandName, isPropagatedCommand);
         }
 
-        CommandContext cmdContext = new CommandContext(commandName, rawArgs, clientChannel, storage, context);
+        final CommandContext cmdContext = new CommandContext(commandName, rawArgs, clientChannel, storage, context);
 
         if (!command.validate(cmdContext)) {
             return handleValidationFailure(isPropagatedCommand);
@@ -126,7 +125,7 @@ public final class CommandDispatcher {
      * @param rawArgs the raw command arguments to validate
      * @return true if input is valid, false otherwise
      */
-    private boolean isValidCommandInput(String[] rawArgs) {
+    private boolean isValidCommandInput(final String[] rawArgs) {
         return rawArgs != null && rawArgs.length >= MINIMUM_COMMAND_ARGS;
     }
 
@@ -137,9 +136,11 @@ public final class CommandDispatcher {
      * @param isPropagatedCommand whether this is a propagated command
      * @return error response buffer or null for propagated commands
      */
-    private ByteBuffer handleUnknownCommand(String commandName, boolean isPropagatedCommand) {
+    private ByteBuffer handleUnknownCommand(final String commandName, final boolean isPropagatedCommand) {
         if (isPropagatedCommand) {
-            LOGGER.debug("Ignoring unknown propagated command: {}", commandName);
+            if (LOGGER.isDebugEnabled()) {
+                LOGGER.debug("Ignoring unknown propagated command: {}", commandName);
+            }
             return null;
         }
         return ResponseBuilder.error(ErrorCode.UNKNOWN_COMMAND.format(commandName));
@@ -151,49 +152,53 @@ public final class CommandDispatcher {
      * @param isPropagatedCommand whether this is a propagated command
      * @return error response buffer or null for propagated commands
      */
-    private ByteBuffer handleValidationFailure(boolean isPropagatedCommand) {
+    private ByteBuffer handleValidationFailure(final boolean isPropagatedCommand) {
         if (isPropagatedCommand) {
-            LOGGER.debug("Ignoring invalid propagated command");
+            if (LOGGER.isDebugEnabled()) {
+                LOGGER.debug("Ignoring invalid propagated command");
+            }
             return null;
         }
         return ResponseBuilder.error(ErrorCode.WRONG_ARG_COUNT.getMessage());
     }
 
-    private boolean canExecuteInCurrentMode(SocketChannel clientChannel, Command command) {
-        boolean inPubSub = pubSubManager.isInPubSubMode(clientChannel);
+    private boolean canExecuteInCurrentMode(final SocketChannel clientChannel, final Command command) {
+        final boolean inPubSub = pubSubManager.isInPubSubMode(clientChannel);
         return !inPubSub || isPubSubCommand(command);
     }
 
-    private ByteBuffer executeCommand(Command command,
-            CommandContext context,
-            SocketChannel clientChannel,
-            boolean isPropagatedCommand,
-            String[] rawArgs) {
-
-        // Start timing for latency measurement
-        Instant startTime = Instant.now();
+    private ByteBuffer executeCommand(final Command command,
+            final CommandContext context,
+            final SocketChannel clientChannel,
+            final boolean isPropagatedCommand,
+            final String[] rawArgs) {
 
         if (shouldQueueForTransaction(clientChannel, command, context)) {
-            return ResponseBuilder.encode(ProtocolConstants.RESP_QUEUED);
+            return ResponseCache.QUEUED_RESPONSE.duplicate();
         }
 
-        // Execute the command
-        CommandResult result = command.execute(context);
+        // For read commands, skip timing overhead for maximum performance
+        if (command.isReadCommand()) {
+            final CommandResult result = command.execute(context);
+            recordLightweightMetrics(command, result, isPropagatedCommand);
+            return buildResponse(result);
+        }
 
-        // Calculate execution time
-        Duration executionTime = Duration.between(startTime, Instant.now());
+        // Only time write commands and others that need detailed metrics
+        final Instant startTime = Instant.now();
+        final CommandResult result = command.execute(context);
+        final Duration executionTime = Duration.between(startTime, Instant.now());
 
-        // Record metrics based on command type and result
         recordCommandMetrics(command, context, result, executionTime, isPropagatedCommand);
-
         handleAofLogging(result, command, isPropagatedCommand, context, rawArgs);
 
-        boolean shouldSendResponse = !isPropagatedCommand || command.isReplicationCommand();
+        final boolean shouldSendResponse = !isPropagatedCommand || command.isReplicationCommand();
         return shouldSendResponse ? buildResponse(result) : null;
     }
 
-    private boolean shouldQueueForTransaction(SocketChannel clientChannel, Command command, CommandContext context) {
-        TransactionState transactionState = transactionManager.getOrCreateState(clientChannel);
+    private boolean shouldQueueForTransaction(final SocketChannel clientChannel, final Command command,
+            final CommandContext context) {
+        final TransactionState transactionState = transactionManager.getOrCreateState(clientChannel);
         if (shouldQueueInTransaction(transactionState, command)) {
             transactionState.queueCommand(command, context);
             return true;
@@ -201,32 +206,32 @@ public final class CommandDispatcher {
         return false;
     }
 
-    private void handleAofLogging(CommandResult result, Command command, boolean isPropagatedCommand,
-            CommandContext context, String[] rawArgs) {
+    private void handleAofLogging(final CommandResult result, final Command command, final boolean isPropagatedCommand,
+            final CommandContext context, final String[] rawArgs) {
         if (result instanceof CommandResult.Success && shouldLogToAof(command, isPropagatedCommand) &&
                 context.getServerContext().isAofMode()) {
-            var aofRepo = context.getServerContext().getAofRepository();
+            final var aofRepo = context.getServerContext().getAofRepository();
             if (aofRepo != null) {
                 aofRepo.appendCommand(rawArgs);
             }
         }
     }
 
-    private boolean shouldQueueInTransaction(TransactionState state, Command command) {
+    private boolean shouldQueueInTransaction(final TransactionState state, final Command command) {
         return state.isInTransaction() && !isTransactionControlCommand(command);
     }
 
-    private boolean isTransactionControlCommand(Command command) {
+    private boolean isTransactionControlCommand(final Command command) {
         return command instanceof MultiCommand ||
                 command instanceof ExecCommand ||
                 command instanceof DiscardCommand;
     }
 
-    private boolean isPubSubCommand(Command command) {
+    private boolean isPubSubCommand(final Command command) {
         return command.isPubSubCommand() || command instanceof PingCommand;
     }
 
-    private boolean shouldLogToAof(Command command, boolean isPropagatedCommand) {
+    private boolean shouldLogToAof(final Command command, final boolean isPropagatedCommand) {
         return command.isWriteCommand() &&
                 !isPropagatedCommand &&
                 !command.isPubSubCommand() &&
@@ -234,31 +239,48 @@ public final class CommandDispatcher {
                 !isTransactionControlCommand(command);
     }
 
-    private ByteBuffer buildResponse(CommandResult result) {
+    private ByteBuffer buildResponse(final CommandResult result) {
         return switch (result) {
-            case CommandResult.MultiSuccess(var responses) -> ResponseBuilder.merge(responses);
-            case CommandResult.Success(var response) -> response;
-            case CommandResult.Error(var message) -> ResponseBuilder.error(message);
+            case CommandResult.MultiSuccess(final var responses) -> ResponseBuilder.merge(responses);
+            case CommandResult.Success(final var response) -> response;
+            case CommandResult.Error(final var message) -> ResponseBuilder.error(message);
             case CommandResult.Async() -> null; // No immediate response for async commands
         };
     }
 
     /**
+     * Record lightweight metrics for read commands (no timing overhead).
+     */
+    private void recordLightweightMetrics(final Command command, final CommandResult result,
+            final boolean isPropagatedCommand) {
+        if (isPropagatedCommand) {
+            return;
+        }
+
+        final var metricsCollector = this.context.getMetricsCollector();
+        metricsCollector.recordReadResponse();
+
+        // Record errors
+        if (result instanceof CommandResult.Error) {
+            metricsCollector.recordError();
+        }
+    }
+
+    /**
      * Record Redis Enterprise compatible metrics for command execution.
      */
-    private void recordCommandMetrics(Command command, CommandContext context,
-            CommandResult result, Duration executionTime,
-            boolean isPropagatedCommand) {
+    private void recordCommandMetrics(final Command command, final CommandContext context,
+            final CommandResult result, final Duration executionTime,
+            final boolean isPropagatedCommand) {
         if (isPropagatedCommand) {
             return; // Don't double-count replicated commands
         }
 
-        var metricsCollector = this.context.getMetricsCollector();
-        String commandName = context.getArgs()[0].toUpperCase();
+        final var metricsCollector = this.context.getMetricsCollector();
+        final String commandName = context.getArgs()[0].toUpperCase();
 
-        // Classify command type for Redis Enterprise metrics
+        // Lightweight metrics - only essential ones for read commands
         if (command.isReadCommand()) {
-            metricsCollector.recordReadCommand(commandName, executionTime);
             metricsCollector.recordReadResponse();
         } else if (command.isWriteCommand()) {
             metricsCollector.recordWriteCommand(commandName, executionTime);
@@ -275,7 +297,7 @@ public final class CommandDispatcher {
 
         // Record replication metrics if this is a master
         if (command.isWriteCommand() && !context.getServerContext().getConfig().isReplicaMode()) {
-            var replicationManager = context.getServerContext().getReplicationManager();
+            final var replicationManager = context.getServerContext().getReplicationManager();
             if (replicationManager.hasConnectedReplicas()) {
                 metricsCollector.recordReplicationCommand();
             }

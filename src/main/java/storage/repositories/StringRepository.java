@@ -26,65 +26,91 @@ public final class StringRepository implements Repository<String> {
 
     private final Map<String, StoredValue<?>> store;
 
-    public StringRepository(Map<String, StoredValue<?>> store) {
+    public StringRepository(final Map<String, StoredValue<?>> store) {
         this.store = store;
     }
 
     @Override
-    public void put(String key, String value, ExpiryPolicy expiry) {
+    public void put(final String key, final String value, final ExpiryPolicy expiry) {
         store.put(key, StringValue.of(value, expiry));
     }
 
     @Override
-    public Optional<String> get(String key) {
+    public Optional<String> get(final String key) {
         return getValidValue(key).filter(v -> v.type() == ValueType.STRING)
                 .map(v -> ((StringValue) v).value());
     }
 
     @Override
-    public boolean delete(String key) {
+    public boolean delete(final String key) {
         return store.remove(key) != null;
     }
 
     @Override
-    public boolean exists(String key) {
+    public boolean exists(final String key) {
         return getValidValue(key).isPresent();
     }
 
     @Override
-    public ValueType getType(String key) {
+    public ValueType getType(final String key) {
         return getValidValue(key).map(StoredValue::type).orElse(ValueType.NONE);
     }
 
-    public long increment(String key) {
-        ensureStringKeyExists(key);
+    public long increment(final String key) {
+        // Optimized single-pass increment
+        final Optional<StoredValue<?>> currentValue = getValidValue(key);
 
-        long val = parseLongValue(get(key).orElse("0"));
+        if (currentValue.isEmpty()) {
+            // Key doesn't exist, start from 0
+            put(key, "1", ExpiryPolicy.never());
+            return 1L;
+        }
 
-        if (val == Long.MAX_VALUE) {
+        final StoredValue<?> storedValue = currentValue.get();
+        if (!(storedValue instanceof StringValue)) {
+            throw new IllegalStateException(ErrorCode.WRONG_TYPE.getMessage());
+        }
+
+        final String currentStr = ((StringValue) storedValue).value();
+        final long currentLong = parseLongValue(currentStr);
+
+        if (currentLong == Long.MAX_VALUE) {
             throw new NumberFormatException("increment or decrement would overflow");
         }
 
-        long newVal = val + 1;
+        final long newVal = currentLong + 1;
         put(key, Long.toString(newVal), ExpiryPolicy.never());
         return newVal;
     }
 
-    public long decrement(String key) {
-        ensureStringKeyExists(key);
+    public long decrement(final String key) {
+        // Optimized single-pass decrement
+        final Optional<StoredValue<?>> currentValue = getValidValue(key);
 
-        long val = parseLongValue(get(key).orElse("0"));
+        if (currentValue.isEmpty()) {
+            // Key doesn't exist, start from 0
+            put(key, "-1", ExpiryPolicy.never());
+            return -1L;
+        }
 
-        if (val == Long.MIN_VALUE) {
+        final StoredValue<?> storedValue = currentValue.get();
+        if (!(storedValue instanceof StringValue)) {
+            throw new IllegalStateException(ErrorCode.WRONG_TYPE.getMessage());
+        }
+
+        final String currentStr = ((StringValue) storedValue).value();
+        final long currentLong = parseLongValue(currentStr);
+
+        if (currentLong == Long.MIN_VALUE) {
             throw new NumberFormatException("increment or decrement would overflow");
         }
 
-        long newVal = val - 1;
+        final long newVal = currentLong - 1;
         put(key, Long.toString(newVal), ExpiryPolicy.never());
         return newVal;
     }
 
-    private void ensureStringKeyExists(String key) {
+    private void ensureStringKeyExists(final String key) {
         if (!exists(key)) {
             put(key, "0", ExpiryPolicy.never());
         }
@@ -93,15 +119,15 @@ public final class StringRepository implements Repository<String> {
         }
     }
 
-    private long parseLongValue(String value) {
+    private long parseLongValue(final String value) {
         try {
             return Long.parseLong(value.trim());
-        } catch (Exception e) {
+        } catch (final Exception e) {
             throw new NumberFormatException(ErrorCode.INVALID_INTEGER.getMessage());
         }
     }
 
-    private Optional<StoredValue<?>> getValidValue(String key) {
+    private Optional<StoredValue<?>> getValidValue(final String key) {
         StoredValue<?> value = store.get(key);
         if (value != null && value.isExpired()) {
             store.remove(key);

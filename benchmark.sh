@@ -220,61 +220,6 @@ prefill_mixed() {
   done
 }
 
-# Custom benchmark for commands not supported by redis-benchmark
-run_custom_benchmark() {
-  local cmd_name="$1"
-  local iterations="$2"
-  local setup_cmd="$3"
-  local test_cmd="$4"
-  
-  echo "=== Custom Benchmarking: $cmd_name ==="
-  
-  # Setup
-  eval "$setup_cmd" 2>/dev/null || true
-  
-  # Time the operations
-  local start_time end_time duration rps avg_latency
-  start_time=$(date +%s.%N 2>/dev/null || date +%s)
-  
-  for ((i=1; i<=iterations; i++)); do
-    eval "$test_cmd" >/dev/null 2>&1 || true
-  done
-  
-  end_time=$(date +%s.%N 2>/dev/null || date +%s)
-  
-  # Calculate metrics
-  if command -v bc >/dev/null; then
-    duration=$(echo "$end_time - $start_time" | bc 2>/dev/null || echo "1")
-    rps=$(echo "scale=2; $iterations / $duration" | bc 2>/dev/null || echo "0")
-    avg_latency=$(echo "scale=3; $duration * 1000 / $iterations" | bc 2>/dev/null || echo "0")
-  else
-    rps="0"
-    avg_latency="0"
-  fi
-  
-  # Create JSON
-  python3 <<EOF
-import json
-
-result = {
-    "requests_per_second": float("$rps") if "$rps" != "0" else None,
-    "average_latency_ms": float("$avg_latency") if "$avg_latency" != "0" else None,
-    "p50_latency_ms": None,
-    "p95_latency_ms": None,
-    "p99_latency_ms": None,
-    "benchmark_succeeded": True,
-    "custom_benchmark": True,
-    "iterations": $iterations
-}
-
-with open("$TMPDIR/$cmd_name.json", 'w') as f:
-    json.dump(result, f, indent=2)
-
-rps_value = result['requests_per_second'] if result['requests_per_second'] is not None else 0
-print(f"✓ $cmd_name: {rps_value:.0f} req/sec")
-EOF
-}
-
 # Main execution
 main() {
   check_dependencies
@@ -287,50 +232,21 @@ main() {
   echo "Results will be saved to: $BENCHMARK_FILE"
   echo ""
   
-  # Standard benchmarks
+  # Standard benchmarks (commands supported by valkey-benchmark/redis-benchmark)
   run_benchmark "SET"
   run_benchmark "GET"
   run_benchmark "INCR"
-  run_benchmark "DECR" "" "prefill_counters"
+  # run_benchmark "DECR" "" "prefill_counters"  # DECR needs existing keys
   
   run_benchmark "LPUSH"
   run_benchmark "RPUSH"
   run_benchmark "LPOP" "" "prefill_lists"
   run_benchmark "RPOP" "" "prefill_lists"
-  run_benchmark "LLEN" "" "prefill_lists"
   run_benchmark "LRANGE" "" "prefill_lists"
   
   run_benchmark "ZADD"
-  run_benchmark "ZRANGE" "" "prefill_zsets"
-  run_benchmark "ZRANK" "" "prefill_zsets"
-  run_benchmark "ZSCORE" "" "prefill_zsets"
-  run_benchmark "ZCARD" "" "prefill_zsets"
-  run_benchmark "ZREM" "" "prefill_zsets"
   
   run_benchmark "PING"
-  run_benchmark "ECHO"
-  run_benchmark "TYPE" "" "prefill_mixed"
-  
-  # Custom benchmarks for commands not in redis-benchmark
-  run_custom_benchmark "KEYS" 100 \
-    'redis-cli -h "$HOST" -p "$PORT" FLUSHALL; for i in {1..200}; do redis-cli -h "$HOST" -p "$PORT" SET "key:$i" "value" >/dev/null 2>&1; done' \
-    'redis-cli -h "$HOST" -p "$PORT" KEYS "key:*"'
-  
-  run_custom_benchmark "INFO" 500 \
-    '' \
-    'redis-cli -h "$HOST" -p "$PORT" INFO'
-  
-  run_custom_benchmark "FLUSHALL" 50 \
-    'redis-cli -h "$HOST" -p "$PORT" SET testkey testvalue' \
-    'redis-cli -h "$HOST" -p "$PORT" FLUSHALL'
-  
-  run_custom_benchmark "XADD" 1000 \
-    'redis-cli -h "$HOST" -p "$PORT" FLUSHALL' \
-    'redis-cli -h "$HOST" -p "$PORT" XADD teststream "*" field value'
-  
-  run_custom_benchmark "MULTI_EXEC" 200 \
-    'redis-cli -h "$HOST" -p "$PORT" FLUSHALL' \
-    'echo -e "MULTI\nSET key value\nINCR counter\nEXEC" | redis-cli -h "$HOST" -p "$PORT" --pipe'
   
   echo ""
   finalize_json

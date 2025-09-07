@@ -152,8 +152,15 @@ start_server() {
     local cmd_args=("--port" "$port")
     cmd_args+=("${args[@]}")
     
-    # Start the server in background
-    nohup java -cp "target/$JAR_NAME" "$MAIN_CLASS" "${cmd_args[@]}" > "$log_file" 2>&1 &
+    # Start the server in background with optimized JVM flags
+    nohup java -server \
+        -XX:+UnlockExperimentalVMOptions \
+        -XX:+UseZGC \
+        -XX:+UseTransparentHugePages \
+        -XX:MaxDirectMemorySize=1g \
+        -XX:+AlwaysPreTouch \
+        -cp "target/$JAR_NAME" \
+        "$MAIN_CLASS" "${cmd_args[@]}" > "$log_file" 2>&1 &
     local pid=$!
     
     # Save PID

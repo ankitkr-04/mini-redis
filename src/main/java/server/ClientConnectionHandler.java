@@ -58,7 +58,11 @@ public final class ClientConnectionHandler {
         if (clientChannel != null) {
             clientChannel.configureBlocking(false);
             clientChannel.register(selector, SelectionKey.OP_READ, ByteBuffer.allocate(BUFFER_SIZE));
-            LOGGER.info("Client connected: {}", clientChannel.getRemoteAddress());
+
+            // Only log connections in debug mode to reduce hot path overhead
+            if (LOGGER.isDebugEnabled()) {
+                LOGGER.debug("Client connected: {}", clientChannel.getRemoteAddress());
+            }
 
             // Record Redis Enterprise compatible connection metrics
             var metricsCollector = serverContext.getMetricsCollector();
@@ -99,7 +103,10 @@ public final class ClientConnectionHandler {
             buffer.clear();
 
         } else if (bytesRead == END_OF_STREAM) {
-            LOGGER.info("Client disconnected: {}", clientChannel.getRemoteAddress());
+            // Only log disconnections in debug mode to reduce hot path overhead
+            if (LOGGER.isDebugEnabled()) {
+                LOGGER.debug("Client disconnected: {}", clientChannel.getRemoteAddress());
+            }
 
             // Record Redis Enterprise compatible disconnection metrics
             var metricsCollector = serverContext.getMetricsCollector();

@@ -36,11 +36,11 @@ public final class ProtocolParser {
      * @param buffer ByteBuffer containing RESP data
      * @return List of String arrays, each representing a command
      */
-    public static List<String[]> parseRespArrays(ByteBuffer buffer) {
-        List<String[]> commands = new ArrayList<>();
+    public static List<String[]> parseRespArrays(final ByteBuffer buffer) {
+        final List<String[]> commands = new ArrayList<>();
         while (buffer.hasRemaining()) {
-            int initialPosition = buffer.position();
-            String[] command = parseRespArray(buffer);
+            final int initialPosition = buffer.position();
+            final String[] command = parseRespArray(buffer);
             if (command == null) {
                 buffer.position(initialPosition);
                 break;
@@ -56,16 +56,16 @@ public final class ProtocolParser {
      * @param buffer ByteBuffer containing RESP data
      * @return Parsed simple string, or null if incomplete
      */
-    public static String parseSimpleString(ByteBuffer buffer) {
-        int initialPosition = buffer.position();
+    public static String parseSimpleString(final ByteBuffer buffer) {
+        final int initialPosition = buffer.position();
         if (!buffer.hasRemaining() || buffer.get() != PLUS) {
             buffer.position(initialPosition);
             return null;
         }
 
-        StringBuilder result = new StringBuilder();
+        final StringBuilder result = new StringBuilder();
         while (buffer.hasRemaining()) {
-            byte currentByte = buffer.get();
+            final byte currentByte = buffer.get();
             if (currentByte == CR) {
                 if (buffer.hasRemaining() && buffer.get() == LF) {
                     return result.toString();
@@ -80,17 +80,25 @@ public final class ProtocolParser {
     }
 
     /**
-     * Parses a RESP message from the buffer.
+     * Parses a RESP message from the buffer with optimized zero-copy approach.
      * 
      * @param buffer ByteBuffer containing RESP data
      * @return Array of strings representing the command and arguments
      */
-    public static String[] parse(ByteBuffer buffer) {
-        String message = extractString(buffer);
-        if (message == null || message.isEmpty()) {
+    public static String[] parse(final ByteBuffer buffer) {
+        if (!buffer.hasRemaining()) {
             return EMPTY_RESULT;
         }
-        return message.charAt(0) == '*' ? parseArray(message) : new String[] { message.trim() };
+
+        final byte firstByte = buffer.get(buffer.position());
+        if (firstByte == ASTERISK) {
+            final String[] result = parseRespArray(buffer);
+            return result != null ? result : EMPTY_RESULT;
+        } else {
+            // Fast path for simple commands
+            final String message = extractString(buffer);
+            return message.isEmpty() ? EMPTY_RESULT : new String[] { message.trim() };
+        }
     }
 
     /**
@@ -100,18 +108,18 @@ public final class ProtocolParser {
      * @return Array of strings representing the command and arguments, or null if
      *         incomplete
      */
-    private static String[] parseRespArray(ByteBuffer buffer) {
+    private static String[] parseRespArray(final ByteBuffer buffer) {
         if (!buffer.hasRemaining() || buffer.get() != ASTERISK) {
             return null;
         }
 
-        Long arraySize = parseNumber(buffer);
+        final Long arraySize = parseNumber(buffer);
         if (arraySize == null || arraySize < 0)
             return null;
 
-        String[] args = new String[arraySize.intValue()];
+        final String[] args = new String[arraySize.intValue()];
         for (int i = 0; i < arraySize; i++) {
-            String arg = parseBulkString(buffer);
+            final String arg = parseBulkString(buffer);
             if (arg == null)
                 return null;
             args[i] = arg;
@@ -125,20 +133,20 @@ public final class ProtocolParser {
      * @param buffer ByteBuffer containing RESP data
      * @return Parsed bulk string, or null if incomplete
      */
-    private static String parseBulkString(ByteBuffer buffer) {
+    private static String parseBulkString(final ByteBuffer buffer) {
         if (!buffer.hasRemaining() || buffer.get() != DOLLAR) {
             return null;
         }
 
-        Long length = parseNumber(buffer);
+        final Long length = parseNumber(buffer);
         if (length == null || length < 0)
             return null;
 
-        int bulkLength = length.intValue();
+        final int bulkLength = length.intValue();
         if (buffer.remaining() < bulkLength + 2)
             return null;
 
-        byte[] data = new byte[bulkLength];
+        final byte[] data = new byte[bulkLength];
         buffer.get(data);
 
         if (!buffer.hasRemaining() || buffer.get() != CR ||
@@ -155,10 +163,10 @@ public final class ProtocolParser {
      * @param buffer ByteBuffer containing RESP data
      * @return Parsed number, or null if incomplete or invalid
      */
-    private static Long parseNumber(ByteBuffer buffer) {
-        StringBuilder numberBuilder = new StringBuilder();
+    private static Long parseNumber(final ByteBuffer buffer) {
+        final StringBuilder numberBuilder = new StringBuilder();
         while (buffer.hasRemaining()) {
-            byte currentByte = buffer.get();
+            final byte currentByte = buffer.get();
             if (currentByte == CR) {
                 if (buffer.hasRemaining() && buffer.get() == LF) {
                     break;
@@ -170,8 +178,10 @@ public final class ProtocolParser {
 
         try {
             return Long.parseLong(numberBuilder.toString());
-        } catch (NumberFormatException e) {
-            LOGGER.debug("Failed to parse number from RESP: {}", numberBuilder, e);
+        } catch (final NumberFormatException e) {
+            if (LOGGER.isDebugEnabled()) {
+                LOGGER.debug("Failed to parse number from RESP: {}", numberBuilder, e);
+            }
             return null;
         }
     }
@@ -182,23 +192,23 @@ public final class ProtocolParser {
      * @param message RESP message as string
      * @return Array of strings representing the command and arguments
      */
-    private static String[] parseArray(String message) {
-        String[] lines = message.split(CRLF);
+    private static String[] parseArray(final String message) {
+        final String[] lines = message.split(CRLF);
         if (lines.length < 2)
             return EMPTY_RESULT;
 
         try {
-            int arraySize = Integer.parseInt(lines[0].substring(1));
+            final int arraySize = Integer.parseInt(lines[0].substring(1));
             if (arraySize < 0)
                 return EMPTY_RESULT;
 
-            String[] result = new String[arraySize];
+            final String[] result = new String[arraySize];
             int resultIndex = 0;
             int lineIndex = 1;
 
             while (lineIndex < lines.length && resultIndex < arraySize) {
                 if (lines[lineIndex].startsWith("$")) {
-                    int contentIndex = lineIndex + 1;
+                    final int contentIndex = lineIndex + 1;
                     if (contentIndex < lines.length) {
                         result[resultIndex++] = lines[contentIndex];
                         lineIndex += 2;
@@ -211,7 +221,9 @@ public final class ProtocolParser {
             }
             return result;
         } catch (NumberFormatException | StringIndexOutOfBoundsException e) {
-            LOGGER.debug("Failed to parse RESP array: {}", message, e);
+            if (LOGGER.isDebugEnabled()) {
+                LOGGER.debug("Failed to parse RESP array: {}", message, e);
+            }
             return EMPTY_RESULT;
         }
     }
@@ -222,8 +234,8 @@ public final class ProtocolParser {
      * @param buffer ByteBuffer containing RESP data
      * @return Extracted string
      */
-    private static String extractString(ByteBuffer buffer) {
-        byte[] bytes = new byte[buffer.remaining()];
+    private static String extractString(final ByteBuffer buffer) {
+        final byte[] bytes = new byte[buffer.remaining()];
         buffer.get(bytes);
         return new String(bytes, StandardCharsets.UTF_8);
     }

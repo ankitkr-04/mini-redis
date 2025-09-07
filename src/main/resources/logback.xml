@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+  <!-- Console appender for development -->
+  <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+    <encoder>
+      <pattern>%d{HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n</pattern>
+    </encoder>
+  </appender>
+
+  <!-- Async console appender for high performance -->
+  <appender name="ASYNC_CONSOLE" class="ch.qos.logback.classic.AsyncAppender">
+    <appender-ref ref="CONSOLE" />
+    <!-- High performance settings -->
+    <queueSize>2048</queueSize>
+    <discardingThreshold>0</discardingThreshold>
+    <includeCallerData>false</includeCallerData>
+    <neverBlock>true</neverBlock>
+    <maxFlushTime>1000</maxFlushTime>
+  </appender>
+
+  <!-- File appender for production -->
+  <appender name="FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+    <file>logs/redis-server.log</file>
+    <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
+      <fileNamePattern>logs/redis-server.%d{yyyy-MM-dd}.log</fileNamePattern>
+      <maxHistory>7</maxHistory>
+      <totalSizeCap>1GB</totalSizeCap>
+    </rollingPolicy>
+    <encoder>
+      <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n</pattern>
+    </encoder>
+  </appender>
+
+  <!-- Async file appender for high performance -->
+  <appender name="ASYNC_FILE" class="ch.qos.logback.classic.AsyncAppender">
+    <appender-ref ref="FILE" />
+    <!-- High performance settings -->
+    <queueSize>4096</queueSize>
+    <discardingThreshold>0</discardingThreshold>
+    <includeCallerData>false</includeCallerData>
+    <neverBlock>true</neverBlock>
+    <maxFlushTime>1000</maxFlushTime>
+  </appender>
+
+  <!-- Reduce logging for hot paths -->
+  <logger name="server.ClientConnectionHandler" level="WARN" />
+  <logger name="protocol.CommandDispatcher" level="WARN" />
+  <logger name="protocol.ProtocolParser" level="WARN" />
+  <logger name="commands.impl" level="WARN" />
+  <logger name="commands.result.CommandResult" level="WARN" />
+
+  <!-- Keep important system logs at INFO -->
+  <logger name="server.RedisServer" level="INFO" />
+  <logger name="server.ServerContext" level="INFO" />
+  <logger name="metrics.MetricsCollector" level="WARN" />
+
+  <!-- Root logger configuration -->
+  <root level="INFO">
+    <appender-ref ref="ASYNC_CONSOLE" />
+    <appender-ref ref="ASYNC_FILE" />
+  </root>
+</configuration>

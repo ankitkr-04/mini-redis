@@ -45,7 +45,7 @@ public final class ResponseBuilder {
      * @param message the message to encode
      * @return ByteBuffer containing the encoded response
      */
-    public static ByteBuffer simpleString(String message) {
+    public static ByteBuffer simpleString(final String message) {
         return encode(SIMPLE_STRING_PREFIX + message + CRLF);
     }
 
@@ -55,18 +55,18 @@ public final class ResponseBuilder {
      * @param message the error message
      * @return ByteBuffer containing the encoded error
      */
-    public static ByteBuffer error(String message) {
+    public static ByteBuffer error(final String message) {
         return encode(ERROR_PREFIX + message + CRLF);
     }
 
     /**
-     * Encodes an integer response.
+     * Encodes an integer response with caching for performance.
      * 
      * @param value the integer value
      * @return ByteBuffer containing the encoded integer
      */
-    public static ByteBuffer integer(long value) {
-        return encode(INTEGER_PREFIX + value + CRLF);
+    public static ByteBuffer integer(final long value) {
+        return ResponseCache.getCachedInteger(value);
     }
 
     /**
@@ -74,15 +74,15 @@ public final class ResponseBuilder {
      * @param buffers
      * @return
      */
-    public static ByteBuffer merge(List<ByteBuffer> buffers) {
+    public static ByteBuffer merge(final List<ByteBuffer> buffers) {
         if (buffers == null || buffers.isEmpty()) {
             return encode(ARRAY_PREFIX + "0" + CRLF);
         }
 
-        int totalSize = calculateTotalSize(buffers);
-        ByteBuffer resultBuffer = ByteBuffer.allocate(totalSize);
+        final int totalSize = calculateTotalSize(buffers);
+        final ByteBuffer resultBuffer = ByteBuffer.allocate(totalSize);
 
-        for (ByteBuffer buffer : buffers) {
+        for (final ByteBuffer buffer : buffers) {
             resultBuffer.put(buffer.duplicate());
         }
 
@@ -91,16 +91,13 @@ public final class ResponseBuilder {
     }
 
     /**
-     * Encodes a bulk string response.
+     * Encodes a bulk string response with caching for performance.
      * 
      * @param value the string value, or null for nil
      * @return ByteBuffer containing the encoded bulk string
      */
-    public static ByteBuffer bulkString(String value) {
-        if (value == null) {
-            return encode(NIL_BULK_STRING + CRLF);
-        }
-        return encode(BULK_STRING_PREFIX + value.length() + CRLF + value + CRLF);
+    public static ByteBuffer bulkString(final String value) {
+        return ResponseCache.getCachedBulkString(value);
     }
 
     /**
@@ -109,15 +106,15 @@ public final class ResponseBuilder {
      * @param elements list of string elements
      * @return ByteBuffer containing the encoded array
      */
-    public static ByteBuffer array(List<String> elements) {
+    public static ByteBuffer array(final List<String> elements) {
         if (elements == null || elements.isEmpty()) {
             return encode(ARRAY_PREFIX + "0" + CRLF);
         }
 
-        StringBuilder responseBuilder = new StringBuilder();
+        final StringBuilder responseBuilder = new StringBuilder();
         responseBuilder.append(ARRAY_PREFIX).append(elements.size()).append(CRLF);
 
-        for (String element : elements) {
+        for (final String element : elements) {
             responseBuilder.append(bufferToString(bulkString(element)));
         }
 
@@ -130,16 +127,16 @@ public final class ResponseBuilder {
      * @param buffers list of ByteBuffer elements
      * @return ByteBuffer containing the encoded array
      */
-    public static ByteBuffer arrayOfBuffers(List<ByteBuffer> buffers) {
+    public static ByteBuffer arrayOfBuffers(final List<ByteBuffer> buffers) {
         if (buffers == null || buffers.isEmpty()) {
             return encode(ARRAY_PREFIX + "0" + CRLF);
         }
 
-        int totalSize = calculateTotalSize(buffers);
-        ByteBuffer resultBuffer = ByteBuffer.allocate(totalSize);
+        final int totalSize = calculateTotalSize(buffers);
+        final ByteBuffer resultBuffer = ByteBuffer.allocate(totalSize);
 
         resultBuffer.put((ARRAY_PREFIX + buffers.size() + CRLF).getBytes(StandardCharsets.UTF_8));
-        for (ByteBuffer buffer : buffers) {
+        for (final ByteBuffer buffer : buffers) {
             resultBuffer.put(buffer.duplicate());
         }
 
@@ -156,25 +153,25 @@ public final class ResponseBuilder {
      * @param <T>             entry type
      * @return ByteBuffer containing the encoded stream entries
      */
-    public static <T> ByteBuffer streamEntries(List<T> entries,
-            Function<T, String> idExtractor,
-            Function<T, List<String>> fieldsExtractor) {
+    public static <T> ByteBuffer streamEntries(final List<T> entries,
+            final Function<T, String> idExtractor,
+            final Function<T, List<String>> fieldsExtractor) {
         if (entries == null || entries.isEmpty()) {
             return encode(ARRAY_PREFIX + "0" + CRLF);
         }
 
-        StringBuilder responseBuilder = new StringBuilder();
+        final StringBuilder responseBuilder = new StringBuilder();
         responseBuilder.append(ARRAY_PREFIX).append(entries.size()).append(CRLF);
 
-        for (T entry : entries) {
-            String id = idExtractor.apply(entry);
-            List<String> fields = fieldsExtractor.apply(entry);
+        for (final T entry : entries) {
+            final String id = idExtractor.apply(entry);
+            final List<String> fields = fieldsExtractor.apply(entry);
 
             responseBuilder.append(ARRAY_PREFIX).append("2").append(CRLF);
             responseBuilder.append(bufferToString(bulkString(id)));
             responseBuilder.append(ARRAY_PREFIX).append(fields.size()).append(CRLF);
 
-            for (String field : fields) {
+            for (final String field : fields) {
                 responseBuilder.append(bufferToString(bulkString(field)));
             }
         }
@@ -189,7 +186,7 @@ public final class ResponseBuilder {
      * @param offset replication offset
      * @return ByteBuffer containing the encoded response
      */
-    public static ByteBuffer fullResyncResponse(String replId, long offset) {
+    public static ByteBuffer fullResyncResponse(final String replId, final long offset) {
         return encode(FULLRESYNC_PREFIX + replId + " " + offset + CRLF);
     }
 
@@ -209,14 +206,14 @@ public final class ResponseBuilder {
      * @return ByteBuffer containing the encoded payload
      * @throws IllegalArgumentException if data is null
      */
-    public static ByteBuffer rdbFilePayload(byte[] data) {
+    public static ByteBuffer rdbFilePayload(final byte[] data) {
         if (data == null) {
             LOGGER.error("RDB file cannot be null");
             throw new IllegalArgumentException("RDB file cannot be null");
         }
 
-        byte[] header = (BULK_STRING_PREFIX + data.length + CRLF).getBytes(StandardCharsets.UTF_8);
-        ByteBuffer buffer = ByteBuffer.allocate(header.length + data.length);
+        final byte[] header = (BULK_STRING_PREFIX + data.length + CRLF).getBytes(StandardCharsets.UTF_8);
+        final ByteBuffer buffer = ByteBuffer.allocate(header.length + data.length);
         buffer.put(header);
         buffer.put(data);
         buffer.flip();
@@ -232,16 +229,16 @@ public final class ResponseBuilder {
      * @param <V> value type
      * @return ByteBuffer containing the encoded map
      */
-    public static <K, V> ByteBuffer map(Map<K, V> map) {
+    public static <K, V> ByteBuffer map(final Map<K, V> map) {
         if (map == null || map.isEmpty()) {
             return encode(ARRAY_PREFIX + "0" + CRLF);
         }
 
-        int totalElements = map.size() * 2;
-        StringBuilder responseBuilder = new StringBuilder();
+        final int totalElements = map.size() * 2;
+        final StringBuilder responseBuilder = new StringBuilder();
         responseBuilder.append(ARRAY_PREFIX).append(totalElements).append(CRLF);
 
-        for (Map.Entry<K, V> entry : map.entrySet()) {
+        for (final Map.Entry<K, V> entry : map.entrySet()) {
             responseBuilder.append(bufferToString(bulkString(String.valueOf(entry.getKey()))));
             responseBuilder.append(bufferToString(bulkString(String.valueOf(entry.getValue()))));
         }
@@ -255,7 +252,7 @@ public final class ResponseBuilder {
      * @param text the string to encode
      * @return ByteBuffer containing the encoded string
      */
-    public static ByteBuffer encode(String text) {
+    public static ByteBuffer encode(final String text) {
         return ByteBuffer.wrap(text.getBytes(StandardCharsets.UTF_8));
     }
 
@@ -265,8 +262,8 @@ public final class ResponseBuilder {
      * @param buffer the ByteBuffer to convert
      * @return String representation of the buffer
      */
-    private static String bufferToString(ByteBuffer buffer) {
-        byte[] bytes = new byte[buffer.remaining()];
+    private static String bufferToString(final ByteBuffer buffer) {
+        final byte[] bytes = new byte[buffer.remaining()];
         buffer.duplicate().get(bytes);
         return new String(bytes, StandardCharsets.UTF_8);
     }
@@ -277,9 +274,9 @@ public final class ResponseBuilder {
      * @param buffers list of ByteBuffers
      * @return total size in bytes
      */
-    private static int calculateTotalSize(List<ByteBuffer> buffers) {
+    private static int calculateTotalSize(final List<ByteBuffer> buffers) {
         int size = (ARRAY_PREFIX + buffers.size() + CRLF).length();
-        for (ByteBuffer buffer : buffers) {
+        for (final ByteBuffer buffer : buffers) {
             size += buffer.remaining();
         }
         return size;

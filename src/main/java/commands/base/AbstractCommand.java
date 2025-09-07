@@ -1,8 +1,5 @@
 package commands.base;
 
-import java.time.Duration;
-import java.time.Instant;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -30,25 +27,21 @@ public abstract class AbstractCommand implements Command {
      * @return the result of command execution
      */
     @Override
-    public final CommandResult execute(CommandContext context) {
-        ValidationResult validation = performValidation(context);
+    public final CommandResult execute(final CommandContext context) {
+        final ValidationResult validation = performValidation(context);
         if (!validation.isValid()) {
             return CommandResult.error(validation.getErrorMessage());
         }
 
-        Instant start = Instant.now();
-        var metricsCollector = context.getServerContext().getMetricsCollector();
+        final var metricsCollector = context.getServerContext().getMetricsCollector();
 
         try {
             metricsCollector.incrementTotalCommands();
-            CommandResult result = executeInternal(context);
+            final CommandResult result = executeInternal(context);
 
-            Duration duration = Duration.between(start, Instant.now());
-            metricsCollector.recordCommandExecution(getName(), duration);
-
-            LOGGER.debug("Executed command: {} in {} ms", getName(), duration.toMillis());
+            LOGGER.debug("Executed command: {}", getName());
             return result;
-        } catch (Exception e) {
+        } catch (final Exception e) {
             LOGGER.error("Command execution failed: {}", e.getMessage(), e);
             metricsCollector.incrementTotalErrors();
             metricsCollector.incrementCommandError(getName());
@@ -63,7 +56,7 @@ public abstract class AbstractCommand implements Command {
      * @return true if valid, false otherwise
      */
     @Override
-    public final boolean validate(CommandContext context) {
+    public final boolean validate(final CommandContext context) {
         return performValidation(context).isValid();
     }
 
