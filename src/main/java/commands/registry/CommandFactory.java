@@ -7,26 +7,18 @@ import commands.impl.basic.EchoCommand;
 import commands.impl.basic.PingCommand;
 import commands.impl.basic.TypeCommand;
 import commands.impl.config.ConfigCommand;
+import commands.impl.config.FlushAllCommand;
 import commands.impl.config.InfoCommand;
 import commands.impl.config.MetricsCommand;
 import commands.impl.keys.KeysComamnd;
-import commands.impl.lists.BlockingPopCommand;
-import commands.impl.lists.LengthCommand;
-import commands.impl.lists.PopCommand;
-import commands.impl.lists.PushCommand;
-import commands.impl.lists.RangeCommand;
+import commands.impl.lists.*;
 import commands.impl.pubsub.PublishCommand;
 import commands.impl.pubsub.SubscribeCommand;
 import commands.impl.pubsub.UnsubscribeCommand;
 import commands.impl.replication.PsyncCommand;
 import commands.impl.replication.ReplconfCommand;
 import commands.impl.replication.WaitCommand;
-import commands.impl.sortedsets.ZAddCommand;
-import commands.impl.sortedsets.ZCardCommand;
-import commands.impl.sortedsets.ZRangeCommand;
-import commands.impl.sortedsets.ZRankCommand;
-import commands.impl.sortedsets.ZRemCommand;
-import commands.impl.sortedsets.ZScoreCommand;
+import commands.impl.sortedsets.*;
 import commands.impl.streams.AddStreamCommand;
 import commands.impl.streams.RangeStreamCommand;
 import commands.impl.streams.ReadStreamCommand;
@@ -34,11 +26,7 @@ import commands.impl.strings.DecrCommand;
 import commands.impl.strings.GetCommand;
 import commands.impl.strings.IncrCommand;
 import commands.impl.strings.SetCommand;
-import commands.impl.transaction.DiscardCommand;
-import commands.impl.transaction.ExecCommand;
-import commands.impl.transaction.MultiCommand;
-import commands.impl.transaction.UnwatchCommand;
-import commands.impl.transaction.WatchCommand;
+import commands.impl.transaction.*;
 import server.ServerContext;
 
 /**
@@ -70,8 +58,8 @@ public final class CommandFactory {
      * @param serverContext the server context required for certain commands
      * @return a populated CommandRegistry instance
      */
-    public static CommandRegistry createRegistry(ServerContext serverContext) {
-        CommandRegistry commandRegistry = new CommandRegistry();
+    public static CommandRegistry createRegistry(final ServerContext serverContext) {
+        final CommandRegistry commandRegistry = new CommandRegistry();
 
         registerBasicCommands(commandRegistry);
         registerKeyCommands(commandRegistry);
@@ -88,30 +76,31 @@ public final class CommandFactory {
         return commandRegistry;
     }
 
-    private static void registerBasicCommands(CommandRegistry registry) {
+    private static void registerBasicCommands(final CommandRegistry registry) {
         registry.register(new PingCommand());
         registry.register(new EchoCommand());
         registry.register(new TypeCommand());
     }
 
-    private static void registerKeyCommands(CommandRegistry registry) {
+    private static void registerKeyCommands(final CommandRegistry registry) {
         registry.register(new KeysComamnd());
     }
 
-    private static void registerConfigCommands(CommandRegistry registry) {
+    private static void registerConfigCommands(final CommandRegistry registry) {
         registry.register(new InfoCommand());
         registry.register(new ConfigCommand());
         registry.register(new MetricsCommand());
+        registry.register(new FlushAllCommand());
     }
 
-    private static void registerStringCommands(CommandRegistry registry) {
+    private static void registerStringCommands(final CommandRegistry registry) {
         registry.register(new GetCommand());
         registry.register(new SetCommand());
         registry.register(new IncrCommand());
         registry.register(new DecrCommand());
     }
 
-    private static void registerListCommands(CommandRegistry registry, ServerContext context) {
+    private static void registerListCommands(final CommandRegistry registry, final ServerContext context) {
         registry.register(new PushCommand(), LPUSH, RPUSH);
         registry.register(new PopCommand(), LPOP, RPOP);
         registry.register(new LengthCommand());
@@ -119,13 +108,13 @@ public final class CommandFactory {
         registry.register(new BlockingPopCommand(context.getBlockingManager()));
     }
 
-    private static void registerStreamCommands(CommandRegistry registry) {
+    private static void registerStreamCommands(final CommandRegistry registry) {
         registry.register(new AddStreamCommand());
         registry.register(new RangeStreamCommand());
         registry.register(new ReadStreamCommand());
     }
 
-    private static void registerTransactionCommands(CommandRegistry registry) {
+    private static void registerTransactionCommands(final CommandRegistry registry) {
         registry.register(new MultiCommand());
         registry.register(new ExecCommand());
         registry.register(new DiscardCommand());
@@ -133,19 +122,19 @@ public final class CommandFactory {
         registry.register(new UnwatchCommand());
     }
 
-    private static void registerReplicationCommands(CommandRegistry registry) {
+    private static void registerReplicationCommands(final CommandRegistry registry) {
         registry.register(new PsyncCommand());
         registry.register(new ReplconfCommand());
         registry.register(new WaitCommand());
     }
 
-    private static void registerPubSubCommands(CommandRegistry registry) {
+    private static void registerPubSubCommands(final CommandRegistry registry) {
         registry.register(new SubscribeCommand(), SUBSCRIBE, PSUBSCRIBE);
         registry.register(new UnsubscribeCommand(), UNSUBSCRIBE, PUNSUBSCRIBE);
         registry.register(new PublishCommand());
     }
 
-    private static void registerSortedSetCommands(CommandRegistry registry) {
+    private static void registerSortedSetCommands(final CommandRegistry registry) {
         registry.register(new ZAddCommand());
         registry.register(new ZCardCommand());
         registry.register(new ZRangeCommand());
