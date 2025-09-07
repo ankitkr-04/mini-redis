@@ -57,18 +57,22 @@ public final class StorageService {
         this.zSetRepository = new ZSetRepository(store);
     }
 
-    public void setEventPublisher(EventPublisher eventPublisher) {
+    public void setEventPublisher(final EventPublisher eventPublisher) {
         this.eventPublisher = eventPublisher;
     }
 
-    private void notifyKeyModified(String key) {
+    private void notifyKeyModified(final String key) {
         if (eventPublisher != null) {
             eventPublisher.publishKeyModified(key);
         }
     }
 
-    private void recordReadMetrics(boolean hasResult) {
-        if (eventPublisher instanceof server.ServerContext serverContext) {
+    // Performance optimized metrics - disable read metrics for high performance
+    private static final boolean ENABLE_READ_METRICS = false; // Disabled for performance
+    private static final boolean ENABLE_WRITE_METRICS = true; // Keep for important write tracking
+
+    private void recordReadMetrics(final boolean hasResult) {
+        if (ENABLE_READ_METRICS && eventPublisher instanceof final server.ServerContext serverContext) {
             if (hasResult) {
                 serverContext.getMetricsCollector().recordKeyspaceReadHit();
             } else {
@@ -77,8 +81,8 @@ public final class StorageService {
         }
     }
 
-    private void recordWriteMetrics(boolean isNewKey, String keyType) {
-        if (eventPublisher instanceof server.ServerContext serverContext) {
+    private void recordWriteMetrics(final boolean isNewKey, final String keyType) {
+        if (ENABLE_WRITE_METRICS && eventPublisher instanceof final server.ServerContext serverContext) {
             if (isNewKey) {
                 serverContext.getMetricsCollector().recordKeyspaceWriteMiss();
                 serverContext.getMetricsCollector().recordKeyCreated(keyType);
@@ -94,195 +98,197 @@ public final class StorageService {
 
     /* ---------- String operations ---------- */
 
-    public void setString(String key, String value, ExpiryPolicy expiry) {
-        boolean isNewKey = !stringRepository.exists(key);
+    public void setString(final String key, final String value, final ExpiryPolicy expiry) {
+        final boolean isNewKey = !stringRepository.exists(key);
         stringRepository.put(key, value, expiry);
         recordWriteMetrics(isNewKey, TYPE_STRING);
         notifyKeyModified(key);
     }
 
-    public Optional<String> getString(String key) {
-        Optional<String> value = stringRepository.get(key);
+    public Optional<String> getString(final String key) {
+        final Optional<String> value = stringRepository.get(key);
         recordReadMetrics(value.isPresent());
         return value;
     }
 
-    public long incrementString(String key) {
-        long newValue = stringRepository.increment(key);
+    public long incrementString(final String key) {
+        final long newValue = stringRepository.increment(key);
         notifyKeyModified(key);
         return newValue;
     }
 
-    public long decrementString(String key) {
-        long newValue = stringRepository.decrement(key);
+    public long decrementString(final String key) {
+        final long newValue = stringRepository.decrement(key);
         notifyKeyModified(key);
         return newValue;
     }
 
     /* ---------- List operations ---------- */
 
-    public int leftPush(String key, String... values) {
-        boolean isNewKey = !listRepository.exists(key);
-        int newSize = listRepository.pushLeft(key, values);
+    public int leftPush(final String key, final String... values) {
+        final boolean isNewKey = !listRepository.exists(key);
+        final int newSize = listRepository.pushLeft(key, values);
         recordWriteMetrics(isNewKey, TYPE_LIST);
         notifyKeyModified(key);
         return newSize;
     }
 
-    public int rightPush(String key, String... values) {
-        boolean isNewKey = !listRepository.exists(key);
-        int newSize = listRepository.pushRight(key, values);
+    public int rightPush(final String key, final String... values) {
+        final boolean isNewKey = !listRepository.exists(key);
+        final int newSize = listRepository.pushRight(key, values);
         recordWriteMetrics(isNewKey, TYPE_LIST);
         notifyKeyModified(key);
         return newSize;
     }
 
-    public Optional<String> leftPop(String key) {
-        Optional<String> poppedValue = listRepository.popLeft(key);
+    public Optional<String> leftPop(final String key) {
+        final Optional<String> poppedValue = listRepository.popLeft(key);
         recordReadMetrics(poppedValue.isPresent());
         poppedValue.ifPresent(v -> notifyKeyModified(key));
         return poppedValue;
     }
 
-    public Optional<String> rightPop(String key) {
-        Optional<String> poppedValue = listRepository.popRight(key);
+    public Optional<String> rightPop(final String key) {
+        final Optional<String> poppedValue = listRepository.popRight(key);
         recordReadMetrics(poppedValue.isPresent());
         poppedValue.ifPresent(v -> notifyKeyModified(key));
         return poppedValue;
     }
 
-    public List<String> leftPop(String key, int count) {
-        List<String> poppedValues = listRepository.popLeft(key, count);
+    public List<String> leftPop(final String key, final int count) {
+        final List<String> poppedValues = listRepository.popLeft(key, count);
         if (!poppedValues.isEmpty()) {
             notifyKeyModified(key);
         }
         return poppedValues;
     }
 
-    public List<String> rightPop(String key, int count) {
-        List<String> poppedValues = listRepository.popRight(key, count);
+    public List<String> rightPop(final String key, final int count) {
+        final List<String> poppedValues = listRepository.popRight(key, count);
         if (!poppedValues.isEmpty()) {
             notifyKeyModified(key);
         }
         return poppedValues;
     }
 
-    public List<String> getListRange(String key, int start, int end) {
-        List<String> listSlice = listRepository.range(key, start, end);
+    public List<String> getListRange(final String key, final int start, final int end) {
+        final List<String> listSlice = listRepository.range(key, start, end);
         recordReadMetrics(!listSlice.isEmpty());
         return listSlice;
     }
 
-    public int getListLength(String key) {
-        int length = listRepository.getLength(key);
+    public int getListLength(final String key) {
+        final int length = listRepository.getLength(key);
         recordReadMetrics(length > 0);
         return length;
     }
 
     /* ---------- Stream operations ---------- */
 
-    public String addStreamEntry(String key, String id, Map<String, String> fields, ExpiryPolicy expiry) {
-        boolean isNewKey = !streamRepository.exists(key);
-        String newId = streamRepository.addEntry(key, id, fields, expiry);
+    public String addStreamEntry(final String key, final String id, final Map<String, String> fields,
+            final ExpiryPolicy expiry) {
+        final boolean isNewKey = !streamRepository.exists(key);
+        final String newId = streamRepository.addEntry(key, id, fields, expiry);
         recordWriteMetrics(isNewKey, TYPE_STREAM);
         notifyKeyModified(key);
         return newId;
     }
 
-    public Optional<String> getLastStreamId(String key) {
-        Optional<String> lastId = streamRepository.getLastId(key);
+    public Optional<String> getLastStreamId(final String key) {
+        final Optional<String> lastId = streamRepository.getLastId(key);
         recordReadMetrics(lastId.isPresent());
         return lastId;
     }
 
-    public List<StreamRangeEntry> getStreamRange(String key, String start, String end, int count) {
-        List<StreamRangeEntry> entries = streamRepository.getRange(key, start, end, count);
+    public List<StreamRangeEntry> getStreamRange(final String key, final String start, final String end,
+            final int count) {
+        final List<StreamRangeEntry> entries = streamRepository.getRange(key, start, end, count);
         recordReadMetrics(!entries.isEmpty());
         return entries;
     }
 
-    public List<StreamRangeEntry> getStreamRange(String key, String start, String end) {
-        List<StreamRangeEntry> entries = streamRepository.getRange(key, start, end, 0);
+    public List<StreamRangeEntry> getStreamRange(final String key, final String start, final String end) {
+        final List<StreamRangeEntry> entries = streamRepository.getRange(key, start, end, 0);
         recordReadMetrics(!entries.isEmpty());
         return entries;
     }
 
-    public List<StreamRangeEntry> getStreamAfter(String key, String afterId, int count) {
-        List<StreamRangeEntry> entries = streamRepository.getAfter(key, afterId, count);
+    public List<StreamRangeEntry> getStreamAfter(final String key, final String afterId, final int count) {
+        final List<StreamRangeEntry> entries = streamRepository.getAfter(key, afterId, count);
         recordReadMetrics(!entries.isEmpty());
         return entries;
     }
 
     /* ---------- ZSet operations ---------- */
 
-    public boolean zAdd(String key, String member, double score) {
-        boolean isNewKey = !zSetRepository.exists(key);
-        boolean added = zSetRepository.add(key, member, score);
+    public boolean zAdd(final String key, final String member, final double score) {
+        final boolean isNewKey = !zSetRepository.exists(key);
+        final boolean added = zSetRepository.add(key, member, score);
         recordWriteMetrics(isNewKey, TYPE_ZSET);
         notifyKeyModified(key);
         return added;
     }
 
-    public boolean zRemove(String key, String member) {
-        boolean removed = zSetRepository.remove(key, member);
+    public boolean zRemove(final String key, final String member) {
+        final boolean removed = zSetRepository.remove(key, member);
         if (removed) {
             notifyKeyModified(key);
         }
         return removed;
     }
 
-    public Optional<QuickZSet.ZSetEntry> zPopMin(String key) {
-        Optional<QuickZSet.ZSetEntry> minEntry = zSetRepository.popMin(key);
+    public Optional<QuickZSet.ZSetEntry> zPopMin(final String key) {
+        final Optional<QuickZSet.ZSetEntry> minEntry = zSetRepository.popMin(key);
         recordReadMetrics(minEntry.isPresent());
         minEntry.ifPresent(v -> notifyKeyModified(key));
         return minEntry;
     }
 
-    public Optional<QuickZSet.ZSetEntry> zPopMax(String key) {
-        Optional<QuickZSet.ZSetEntry> maxEntry = zSetRepository.popMax(key);
+    public Optional<QuickZSet.ZSetEntry> zPopMax(final String key) {
+        final Optional<QuickZSet.ZSetEntry> maxEntry = zSetRepository.popMax(key);
         recordReadMetrics(maxEntry.isPresent());
         maxEntry.ifPresent(v -> notifyKeyModified(key));
         return maxEntry;
     }
 
-    public List<QuickZSet.ZSetEntry> zRange(String key, int start, int end) {
-        List<QuickZSet.ZSetEntry> entries = zSetRepository.range(key, start, end);
+    public List<QuickZSet.ZSetEntry> zRange(final String key, final int start, final int end) {
+        final List<QuickZSet.ZSetEntry> entries = zSetRepository.range(key, start, end);
         recordReadMetrics(!entries.isEmpty());
         return entries;
     }
 
-    public List<QuickZSet.ZSetEntry> zRangeByScore(String key, double min, double max) {
-        List<QuickZSet.ZSetEntry> entries = zSetRepository.rangeByScore(key, min, max);
+    public List<QuickZSet.ZSetEntry> zRangeByScore(final String key, final double min, final double max) {
+        final List<QuickZSet.ZSetEntry> entries = zSetRepository.rangeByScore(key, min, max);
         recordReadMetrics(!entries.isEmpty());
         return entries;
     }
 
-    public int zSize(String key) {
-        int size = zSetRepository.size(key);
+    public int zSize(final String key) {
+        final int size = zSetRepository.size(key);
         recordReadMetrics(size > 0);
         return size;
     }
 
-    public Double zScore(String key, String member) {
-        Double score = zSetRepository.getScore(key, member);
+    public Double zScore(final String key, final String member) {
+        final Double score = zSetRepository.getScore(key, member);
         recordReadMetrics(score != null);
         return score;
     }
 
-    public Long zRank(String key, String member) {
-        Long rank = zSetRepository.getRank(key, member);
+    public Long zRank(final String key, final String member) {
+        final Long rank = zSetRepository.getRank(key, member);
         recordReadMetrics(rank != null);
         return rank;
     }
 
     /* ---------- General operations ---------- */
 
-    public boolean exists(String key) {
+    public boolean exists(final String key) {
         return getValidValue(key) != null;
     }
 
-    public boolean delete(String key) {
-        StoredValue<?> removedValue = store.remove(key);
+    public boolean delete(final String key) {
+        final StoredValue<?> removedValue = store.remove(key);
         if (removedValue != null) {
             updateDeleteMetrics(removedValue);
             notifyKeyModified(key);
@@ -291,13 +297,13 @@ public final class StorageService {
         return false;
     }
 
-    public ValueType getType(String key) {
-        StoredValue<?> value = getValidValue(key);
+    public ValueType getType(final String key) {
+        final StoredValue<?> value = getValidValue(key);
         return value != null ? value.type() : ValueType.NONE;
     }
 
-    public List<String> getKeysByPattern(String pattern) {
-        String regex = "^" + pattern.replace("?", ".").replace("*", ".*") + "$";
+    public List<String> getKeysByPattern(final String pattern) {
+        final String regex = "^" + pattern.replace("?", ".").replace("*", ".*") + "$";
         return store.keySet().stream()
                 .filter(key -> key.matches(regex))
                 .toList();
@@ -312,21 +318,21 @@ public final class StorageService {
     }
 
     public void purgeExpiredKeys() {
-        long expiredCount = store.entrySet().stream()
+        final long expiredCount = store.entrySet().stream()
                 .filter(entry -> entry.getValue().isExpired())
                 .count();
 
         store.entrySet().removeIf(entry -> entry.getValue().isExpired());
 
-        if (expiredCount > 0 && eventPublisher instanceof server.ServerContext serverContext) {
+        if (expiredCount > 0 && eventPublisher instanceof final server.ServerContext serverContext) {
             for (int i = 0; i < expiredCount; i++) {
                 serverContext.getMetricsCollector().incrementExpiredKeys();
             }
         }
     }
 
-    private StoredValue<?> getValidValue(String key) {
-        StoredValue<?> value = store.get(key);
+    private StoredValue<?> getValidValue(final String key) {
+        final StoredValue<?> value = store.get(key);
         if (value != null && value.isExpired()) {
             store.remove(key);
             return null;
@@ -334,9 +340,9 @@ public final class StorageService {
         return value;
     }
 
-    private void updateDeleteMetrics(StoredValue<?> deletedValue) {
-        if (eventPublisher instanceof server.ServerContext serverContext) {
-            var metricsCollector = serverContext.getMetricsCollector();
+    private void updateDeleteMetrics(final StoredValue<?> deletedValue) {
+        if (eventPublisher instanceof final server.ServerContext serverContext) {
+            final var metricsCollector = serverContext.getMetricsCollector();
             switch (deletedValue.type()) {
                 case STRING -> metricsCollector.decrementKeyCount(TYPE_STRING);
                 case LIST -> metricsCollector.decrementKeyCount(TYPE_LIST);

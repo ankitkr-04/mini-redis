@@ -28,6 +28,9 @@ public final class TransactionManager {
     // Map of client channels to their transaction states
     private final Map<SocketChannel, TransactionState> clientTransactionStates = new ConcurrentHashMap<>();
 
+    // Reverse index: key -> set of clients watching that key (for performance)
+    private final Map<String, Set<SocketChannel>> keyToWatchingClients = new ConcurrentHashMap<>();
+
     private final ServerContext serverContext;
 
     /**
@@ -35,7 +38,7 @@ public final class TransactionManager {
      *
      * @param serverContext the server context
      */
-    public TransactionManager(ServerContext serverContext) {
+    public TransactionManager(final ServerContext serverContext) {
         this.serverContext = serverContext;
     }
 
@@ -46,7 +49,7 @@ public final class TransactionManager {
      * @param clientChannel the client channel, or null for replicated commands
      * @return the TransactionState for the client
      */
-    public TransactionState getOrCreateState(SocketChannel clientChannel) {
+    public TransactionState getOrCreateState(final SocketChannel clientChannel) {
         if (clientChannel == null) {
             return REPLICATED_COMMAND_STATE;
         }
@@ -59,8 +62,8 @@ public final class TransactionManager {
      * @param clientChannel the client channel
      * @return true if the client is in a transaction, false otherwise
      */
-    public boolean isInTransaction(SocketChannel clientChannel) {
-        TransactionState transactionState = clientTransactionStates.get(clientChannel);
+    public boolean isInTransaction(final SocketChannel clientChannel) {
+        final TransactionState transactionState = clientTransactionStates.get(clientChannel);
         return transactionState != null && transactionState.isInTransaction();
     }
 
@@ -69,10 +72,24 @@ public final class TransactionManager {
      *
      * @param clientChannel the client channel
      */
-    public void clearState(SocketChannel clientChannel) {
-        TransactionState transactionState = clientTransactionStates.remove(clientChannel);
-        if (transactionState != null && transactionState.isInTransaction()) {
-            serverContext.getMetricsCollector().decrementActiveTransactions();
+    public void clearState(final SocketChannel clientChannel) {
+        final TransactionState transactionState = clientTransactionStates.remove(clientChannel);
+        if (transactionState != null) {
+            // Clean up reverse index
+            final Set<String> watchedKeys = transactionState.getWatchedKeys();
+            for (final String key : watchedKeys) {
+                final Set<SocketChannel> clients = keyToWatchingClients.get(key);
+                if (clients != null) {
+                    clients.remove(clientChannel);
+                    if (clients.isEmpty()) {
+                        keyToWatchingClients.remove(key);
+                    }
+                }
+            }
+
+            if (transactionState.isInTransaction()) {
+                serverContext.getMetricsCollector().decrementActiveTransactions();
+            }
             LOGGER.info("Cleared transaction state for client: {}", clientChannel);
         }
     }
@@ -82,8 +99,8 @@ public final class TransactionManager {
      *
      * @param clientChannel the client channel
      */
-    public void beginTransaction(SocketChannel clientChannel) {
-        TransactionState transactionState = getOrCreateState(clientChannel);
+    public void beginTransaction(final SocketChannel clientChannel) {
+        final TransactionState transactionState = getOrCreateState(clientChannel);
         if (!transactionState.isInTransaction()) {
             transactionState.beginTransaction();
             serverContext.getMetricsCollector().incrementActiveTransactions();
@@ -97,8 +114,8 @@ public final class TransactionManager {
      * @param clientChannel the client channel
      * @param success       true if the transaction succeeded, false otherwise
      */
-    public void endTransaction(SocketChannel clientChannel, boolean success) {
-        TransactionState transactionState = clientTransactionStates.get(clientChannel);
+    public void endTransaction(final SocketChannel clientChannel, final boolean success) {
+        final TransactionState transactionState = clientTransactionStates.get(clientChannel);
         if (transactionState != null && transactionState.isInTransaction()) {
             transactionState.clearTransaction();
             serverContext.getMetricsCollector().decrementActiveTransactions();
@@ -118,9 +135,9 @@ public final class TransactionManager {
      * @param command        the command to queue
      * @param commandContext the command context
      */
-    public void queueCommand(SocketChannel clientChannel, commands.core.Command command,
-            commands.context.CommandContext commandContext) {
-        TransactionState transactionState = getOrCreateState(clientChannel);
+    public void queueCommand(final SocketChannel clientChannel, final commands.core.Command command,
+            final commands.context.CommandContext commandContext) {
+        final TransactionState transactionState = getOrCreateState(clientChannel);
         if (transactionState.isInTransaction()) {
             transactionState.queueCommand(command, commandContext);
             serverContext.getMetricsCollector().incrementTransactionCommands();
@@ -134,8 +151,8 @@ public final class TransactionManager {
      * Useful when the entire store is cleared.
      */
     public void invalidateAllWatchingClients() {
-        for (Map.Entry<SocketChannel, TransactionState> entry : clientTransactionStates.entrySet()) {
-            TransactionState state = entry.getValue();
+        for (final Map.Entry<SocketChannel, TransactionState> entry : clientTransactionStates.entrySet()) {
+            final TransactionState state = entry.getValue();
             if (state.hasWatchedKeys()) {
                 state.invalidateTransaction();
                 LOGGER.debug("Invalidated transaction for client {} due to store clear", entry.getKey());
@@ -149,6 +166,7 @@ public final class TransactionManager {
      */
     public void clearAll() {
         clientTransactionStates.clear();
+        keyToWatchingClients.clear();
         LOGGER.info("Cleared all transaction states.");
     }
 
@@ -158,8 +176,17 @@ public final class TransactionManager {
      * @param clientChannel the client channel
      * @param key           the key to watch
      */
-    public void watchKey(SocketChannel clientChannel, String key) {
+    public void watchKey(final SocketChannel clientChannel, final String key) {
         getOrCreateState(clientChannel).addWatchedKey(key);
+
+        // Update reverse index for performance
+        Set<SocketChannel> clients = keyToWatchingClients.get(key);
+        if (clients == null) {
+            clients = ConcurrentHashMap.newKeySet();
+            keyToWatchingClients.put(key, clients);
+        }
+        clients.add(clientChannel);
+
         LOGGER.debug("Client {} is now watching key: {}", clientChannel, key);
     }
 
@@ -168,9 +195,21 @@ public final class TransactionManager {
      *
      * @param clientChannel the client channel
      */
-    public void unwatchAllKeys(SocketChannel clientChannel) {
-        TransactionState transactionState = clientTransactionStates.get(clientChannel);
+    public void unwatchAllKeys(final SocketChannel clientChannel) {
+        final TransactionState transactionState = clientTransactionStates.get(clientChannel);
         if (transactionState != null) {
+            // Remove client from reverse index for all watched keys
+            final Set<String> watchedKeys = transactionState.getWatchedKeys();
+            for (final String key : watchedKeys) {
+                final Set<SocketChannel> clients = keyToWatchingClients.get(key);
+                if (clients != null) {
+                    clients.remove(clientChannel);
+                    if (clients.isEmpty()) {
+                        keyToWatchingClients.remove(key);
+                    }
+                }
+            }
+
             transactionState.clearWatchedKeys();
             LOGGER.debug("Client {} unwatched all keys.", clientChannel);
         }
@@ -182,8 +221,8 @@ public final class TransactionManager {
      * @param clientChannel the client channel
      * @return true if the client has watched keys, false otherwise
      */
-    public boolean hasWatchedKeys(SocketChannel clientChannel) {
-        TransactionState transactionState = clientTransactionStates.get(clientChannel);
+    public boolean hasWatchedKeys(final SocketChannel clientChannel) {
+        final TransactionState transactionState = clientTransactionStates.get(clientChannel);
         return transactionState != null && transactionState.hasWatchedKeys();
     }
 
@@ -193,21 +232,26 @@ public final class TransactionManager {
      * @param clientChannel the client channel
      * @return the set of watched keys, or an empty set if none
      */
-    public Set<String> getWatchedKeys(SocketChannel clientChannel) {
-        TransactionState transactionState = clientTransactionStates.get(clientChannel);
+    public Set<String> getWatchedKeys(final SocketChannel clientChannel) {
+        final TransactionState transactionState = clientTransactionStates.get(clientChannel);
         return transactionState != null ? transactionState.getWatchedKeys() : Set.of();
     }
 
     /**
      * Invalidates transactions for all clients watching the specified key.
+     * Uses reverse index for O(1) key lookup instead of O(n) client iteration.
      *
      * @param key the key to invalidate
      */
-    public void invalidateWatchingClients(String key) {
-        for (TransactionState transactionState : clientTransactionStates.values()) {
-            if (transactionState.isKeyWatched(key)) {
-                transactionState.invalidateTransaction();
-                LOGGER.debug("Invalidated transaction for client watching key: {}", key);
+    public void invalidateWatchingClients(final String key) {
+        final Set<SocketChannel> watchingClients = keyToWatchingClients.get(key);
+        if (watchingClients != null && !watchingClients.isEmpty()) {
+            for (final SocketChannel clientChannel : watchingClients) {
+                final TransactionState transactionState = clientTransactionStates.get(clientChannel);
+                if (transactionState != null) {
+                    transactionState.invalidateTransaction();
+                    LOGGER.debug("Invalidated transaction for client {} watching key: {}", clientChannel, key);
+                }
             }
         }
     }
