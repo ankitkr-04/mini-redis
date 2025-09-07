@@ -29,7 +29,7 @@ public abstract class WriteCommand extends AbstractCommand {
      * @param key     the key for which data was added
      * @param context the server context
      */
-    protected void publishDataAdded(String key, ServerContext context) {
+    protected void publishDataAdded(final String key, final ServerContext context) {
         context.publishDataAdded(key);
         LOGGER.debug("Data added event published for key: {}", key);
     }
@@ -40,8 +40,11 @@ public abstract class WriteCommand extends AbstractCommand {
      * @param commandArgs the command arguments
      * @param context     the server context
      */
-    protected void propagateCommand(String[] commandArgs, ServerContext context) {
-        context.propagateWriteCommand(commandArgs);
-        LOGGER.trace("Write command propagated: {}", (Object) commandArgs);
+    protected void propagateCommand(final String[] commandArgs, final ServerContext context) {
+        if (!context.getConfig().isReplicaMode() &&
+                context.getReplicationManager().hasConnectedReplicas()) {
+            context.propagateWriteCommand(commandArgs);
+            LOGGER.trace("Write command propagated: {}", (Object) commandArgs);
+        }
     }
 }

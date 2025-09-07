@@ -36,7 +36,7 @@ public final class ReplicationManager {
     private final ReplicationState replicationState;
     private final ServerContext serverContext;
 
-    public ReplicationManager(ReplicationState replicationState, ServerContext serverContext) {
+    public ReplicationManager(final ReplicationState replicationState, final ServerContext serverContext) {
         this.replicationState = replicationState;
         this.serverContext = serverContext;
     }
@@ -46,7 +46,7 @@ public final class ReplicationManager {
      * 
      * @param replicaChannel the replica's socket channel
      */
-    public void addReplica(SocketChannel replicaChannel) {
+    public void addReplica(final SocketChannel replicaChannel) {
         replicaOffsets.put(replicaChannel, new AtomicLong(0));
         replicationState.incrementConnectedSlaves();
         serverContext.getMetricsCollector().incrementReplicaConnections();
@@ -58,7 +58,7 @@ public final class ReplicationManager {
      * 
      * @param replicaChannel the replica's socket channel
      */
-    public void removeReplica(SocketChannel replicaChannel) {
+    public void removeReplica(final SocketChannel replicaChannel) {
         if (replicaOffsets.remove(replicaChannel) != null) {
             replicationState.decrementConnectedSlaves();
             serverContext.getMetricsCollector().decrementReplicaConnections();
@@ -88,17 +88,26 @@ public final class ReplicationManager {
      * 
      * @param commandArgs the command to propagate
      */
-    public void propagateCommand(String[] commandArgs) {
-        if (replicaOffsets.isEmpty())
+    public void propagateCommand(final String[] commandArgs) {
+        if (replicaOffsets.isEmpty()) {
             return;
+        }
 
-        List<SocketChannel> failedReplicas = replicaOffsets.keySet().parallelStream()
-                .filter(replica -> !sendCommandToReplica(replica, commandArgs))
-                .toList();
+        final long commandSize = ReplicationProtocol.calculateCommandSize(commandArgs);
+        final List<SocketChannel> failedReplicas = new ArrayList<>();
+
+        for (final SocketChannel replica : replicaOffsets.keySet()) {
+            if (!sendCommandToReplica(replica, commandArgs)) {
+                failedReplicas.add(replica);
+            }
+        }
 
         failedReplicas.forEach(this::removeReplica);
-        replicationState.incrementReplicationOffset(ReplicationProtocol.calculateCommandSize(commandArgs));
-        serverContext.getMetricsCollector().incrementReplicationCommandsSent();
+
+        if (failedReplicas.size() < replicaOffsets.size()) {
+            replicationState.incrementReplicationOffset(commandSize);
+            serverContext.getMetricsCollector().incrementReplicationCommandsSent();
+        }
     }
 
     /**
@@ -107,27 +116,27 @@ public final class ReplicationManager {
      * @param replicaChannel the replica's socket channel
      * @param offset         the new offset
      */
-    public void updateReplicaOffset(SocketChannel replicaChannel, long offset) {
-        AtomicLong replicaOffset = replicaOffsets.get(replicaChannel);
+    public void updateReplicaOffset(final SocketChannel replicaChannel, final long offset) {
+        final AtomicLong replicaOffset = replicaOffsets.get(replicaChannel);
         if (replicaOffset != null) {
             replicaOffset.set(offset);
         }
     }
 
-    private boolean sendCommandToReplica(SocketChannel replicaChannel, String[] commandArgs) {
+    private boolean sendCommandToReplica(final SocketChannel replicaChannel, final String[] commandArgs) {
         try {
             ReplicationProtocol.sendCommand(replicaChannel, commandArgs);
             return true;
-        } catch (IOException e) {
+        } catch (final IOException e) {
             LOGGER.debug("Failed to send command to replica {}: {}", getChannelInfo(replicaChannel), e.getMessage());
             return false;
         }
     }
 
-    private String getChannelInfo(SocketChannel channel) {
+    private String getChannelInfo(final SocketChannel channel) {
         try {
             return channel.getRemoteAddress().toString();
-        } catch (IOException e) {
+        } catch (final IOException e) {
             return "unknown";
         }
     }
@@ -138,7 +147,7 @@ public final class ReplicationManager {
      * 
      * @param requiredOffset the offset to check
      */
-    public int getSyncReplicasCount(long requiredOffset) {
+    public int getSyncReplicasCount(final long requiredOffset) {
         return (int) replicaOffsets.values().stream()
                 .filter(offset -> offset.get() >= requiredOffset)
                 .count();
@@ -151,7 +160,7 @@ public final class ReplicationManager {
         replicaOffsets.keySet().forEach(replica -> {
             try {
                 ReplicationProtocol.sendCommand(replica, REPLCONF_GETACK_COMMAND);
-            } catch (IOException e) {
+            } catch (final IOException e) {
                 LOGGER.debug("Failed to send GETACK to replica {}: {}", getChannelInfo(replica), e.getMessage());
             }
         });
@@ -165,9 +174,9 @@ public final class ReplicationManager {
      * @param requiredOffset   offset to wait for
      * @param timeoutMillis    timeout in milliseconds
      */
-    public void addPendingWait(SocketChannel clientChannel, int requiredReplicas, long requiredOffset,
-            long timeoutMillis) {
-        long deadlineMillis = System.currentTimeMillis() + timeoutMillis;
+    public void addPendingWait(final SocketChannel clientChannel, final int requiredReplicas, final long requiredOffset,
+            final long timeoutMillis) {
+        final long deadlineMillis = System.currentTimeMillis() + timeoutMillis;
         pendingWaits.add(new PendingWait(clientChannel, requiredReplicas, requiredOffset, deadlineMillis));
     }
 
@@ -176,7 +185,7 @@ public final class ReplicationManager {
      * 
      * @param clientChannel the client's socket channel
      */
-    public void removePendingWait(SocketChannel clientChannel) {
+    public void removePendingWait(final SocketChannel clientChannel) {
         pendingWaits.removeIf(wait -> wait.clientChannel == clientChannel);
     }
 
@@ -185,13 +194,13 @@ public final class ReplicationManager {
      * timed out.
      */
     public void checkPendingWaits() {
-        long nowMillis = Instant.now().toEpochMilli();
-        List<PendingWait> completedWaits = new ArrayList<>();
+        final long nowMillis = Instant.now().toEpochMilli();
+        final List<PendingWait> completedWaits = new ArrayList<>();
 
-        for (PendingWait wait : pendingWaits) {
-            boolean timedOut = nowMillis >= wait.deadlineMillis;
-            int syncedReplicas = getSyncReplicasCount(wait.requiredOffset);
-            boolean satisfied = syncedReplicas >= wait.requiredReplicas;
+        for (final PendingWait wait : pendingWaits) {
+            final boolean timedOut = nowMillis >= wait.deadlineMillis;
+            final int syncedReplicas = getSyncReplicasCount(wait.requiredOffset);
+            final boolean satisfied = syncedReplicas >= wait.requiredReplicas;
 
             if (timedOut || satisfied) {
                 sendCurrentCount(wait.clientChannel, wait.requiredOffset);
@@ -204,14 +213,14 @@ public final class ReplicationManager {
     /**
      * Sends the current number of synced replicas to the client.
      * 
-     * @param clientChannel    the client's socket channel
-     * @param requiredOffset   offset requested
+     * @param clientChannel  the client's socket channel
+     * @param requiredOffset offset requested
      */
-    public void sendCurrentCount(SocketChannel clientChannel, long requiredOffset) {
-        int syncedReplicas = getSyncReplicasCount(requiredOffset);
+    public void sendCurrentCount(final SocketChannel clientChannel, final long requiredOffset) {
+        final int syncedReplicas = getSyncReplicasCount(requiredOffset);
         try {
             ReplicationProtocol.sendResponse(clientChannel, ResponseBuilder.integer(syncedReplicas));
-        } catch (IOException e) {
+        } catch (final IOException e) {
             LOGGER.debug("Failed to send current count to client {}: {}", getChannelInfo(clientChannel),
                     e.getMessage());
         }

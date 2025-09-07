@@ -104,7 +104,7 @@ public record ServerConfiguration(
      * @param options map of configuration key-value pairs
      * @return a new ServerConfiguration instance with the specified options
      */
-    public static ServerConfiguration from(Map<String, String> options) {
+    public static ServerConfiguration from(final Map<String, String> options) {
         return new ServerConfiguration(
                 ConfigurationParser.getIntOption(options, PARAM_PORT, ServerConfig.DEFAULT_PORT),
                 ConfigurationParser.getMasterInfoOption(options, PARAM_REPLICAOF),
@@ -146,7 +146,23 @@ public record ServerConfiguration(
      * @return optional containing the parameter value, or empty if unknown
      *         parameter
      */
-    public Optional<String> getConfigParameter(String parameter) {
+    public Optional<String> getConfigParameter(final String parameter) {
+        if ("*".equals(parameter)) {
+            return Optional.of("port " + port + " " +
+                    PARAM_REPL_BACKLOG_SIZE + " " + replicationBacklogSize + " " +
+                    PARAM_DIR + " " + dataDirectory + " " +
+                    PARAM_DBFILENAME + " " + databaseFilename + " " +
+                    PARAM_APPENDONLY + " " + (appendOnlyMode ? BOOLEAN_YES : BOOLEAN_NO) + " " +
+                    PARAM_MAXMEMORY + " " + maxMemory + " " +
+                    PARAM_BIND + " " + bindAddress + " " +
+                    PARAM_REQUIREPASS + " " + requirePassword.orElse(EMPTY_STRING) + " " +
+                    PARAM_MASTER_HOST + " " + (isReplicaMode() ? getMasterInfo().host() : EMPTY_STRING) + " " +
+                    PARAM_MASTER_PORT + " "
+                    + (isReplicaMode() ? String.valueOf(getMasterInfo().port()) : DEFAULT_MASTER_PORT_STRING) + " " +
+                    PARAM_REPLICAOF + " "
+                    + (isReplicaMode() ? getMasterInfo().host() + " " + getMasterInfo().port() : EMPTY_STRING));
+        }
+
         return switch (parameter.toLowerCase()) {
             case PARAM_PORT -> Optional.of(String.valueOf(port));
             case PARAM_REPL_BACKLOG_SIZE -> Optional.of(String.valueOf(replicationBacklogSize));
@@ -159,6 +175,8 @@ public record ServerConfiguration(
             case PARAM_MASTER_HOST -> Optional.of(isReplicaMode() ? getMasterInfo().host() : EMPTY_STRING);
             case PARAM_MASTER_PORT ->
                 Optional.of(isReplicaMode() ? String.valueOf(getMasterInfo().port()) : DEFAULT_MASTER_PORT_STRING);
+            case PARAM_REPLICAOF ->
+                Optional.of(isReplicaMode() ? getMasterInfo().host() + " " + getMasterInfo().port() : EMPTY_STRING);
             default -> Optional.empty();
         };
     }

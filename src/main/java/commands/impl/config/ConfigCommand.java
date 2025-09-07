@@ -1,5 +1,6 @@
 package commands.impl.config;
 
+import java.util.ArrayList;
 import java.util.List;
 
 import org.slf4j.Logger;
@@ -34,7 +35,7 @@ public class ConfigCommand extends ReadCommand {
     }
 
     @Override
-    protected ValidationResult performValidation(CommandContext context) {
+    protected ValidationResult performValidation(final CommandContext context) {
 
         return CommandValidator.argRange(MIN_ARG_COUNT, MAX_ARG_COUNT).and(
                 CommandValidator.argEquals(1, SUPPORTED_SUBCOMMAND)).validate(context);
@@ -42,14 +43,26 @@ public class ConfigCommand extends ReadCommand {
     }
 
     @Override
-    protected CommandResult executeInternal(CommandContext context) {
-        String parameter = context.getArg(2).toLowerCase();
-        var config = context.getServerContext().getConfig();
+    protected CommandResult executeInternal(final CommandContext context) {
+        final String parameter = context.getArg(2);
+        final var config = context.getServerContext().getConfig();
 
         return config.getConfigParameter(parameter)
                 .map(value -> {
                     LOGGER.debug("CONFIG GET for parameter '{}': '{}'", parameter, value);
-                    return CommandResult.success(ResponseBuilder.array(List.of(parameter, value)));
+                    if ("*".equals(parameter)) {
+                        final String[] parts = value.split(" ");
+                        final List<String> configList = new ArrayList<>();
+                        for (int i = 0; i < parts.length - 1; i += 2) {
+                            if (i + 1 < parts.length) {
+                                configList.add(parts[i]);
+                                configList.add(parts[i + 1]);
+                            }
+                        }
+                        return CommandResult.success(ResponseBuilder.array(configList));
+                    } else {
+                        return CommandResult.success(ResponseBuilder.array(List.of(parameter, value)));
+                    }
                 })
                 .orElseGet(() -> {
                     LOGGER.info("Unknown configuration parameter requested: '{}'", parameter);

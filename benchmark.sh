@@ -1,196 +1,344 @@
-#!/bin/bash
+#!/usr/bin/env bash
+# benchmark.sh - Redis benchmark script with proper error handling
+# Requirements: redis-benchmark, redis-cli, bc, python3
 
-# Redis Full Command Benchmark Script
-# Tests all 25 implemented commands in your Mini Redis Server
+# Set safer bash options
+set -o pipefail
 
-HOST="127.0.0.1"
-PORT="6379"
-CLIENTS=50
-REQUESTS=10000
-DATASIZE=3
+HOST="${HOST:-127.0.0.1}"
+PORT="${PORT:-6379}"
+CLIENTS="${CLIENTS:-50}"
+REQUESTS="${REQUESTS:-10000}"
+DATASIZE="${DATASIZE:-3}"
+BENCHMARK_FILE="${BENCHMARK_FILE:-benchmark.json}"
+TMPDIR=$(mktemp -d -t redis-bench.XXXX)
 
-echo "====== MINI REDIS FULL BENCHMARK ======"
-echo "Testing all implemented commands..."
-echo ""
+# Commands to benchmark
+COMMANDS=( \
+  "SET" "GET" "INCR" "DECR" \
+  "LPUSH" "RPUSH" "LPOP" "RPOP" "LLEN" "LRANGE" \
+  "ZADD" "ZRANGE" "ZRANK" "ZSCORE" "ZCARD" "ZREM" \
+  "PING" "ECHO" "TYPE" "KEYS" "INFO" "FLUSHALL" \
+  "XADD" "MULTI_EXEC" \
+)
 
-# Basic String Operations
-echo "====== STRING COMMANDS ======"
-echo "Testing SET..."
-redis-benchmark -h $HOST -p $PORT -n $REQUESTS -c $CLIENTS -d $DATASIZE -t set
+# Check dependencies
+check_dependencies() {
+  local missing=()
+  for dep in redis-benchmark redis-cli bc python3; do
+    if ! command -v "$dep" &>/dev/null; then
+      missing+=("$dep")
+    fi
+  done
+  if [[ ${#missing[@]} -gt 0 ]]; then
+    echo "Error: Missing dependencies: ${missing[*]}" >&2
+    exit 1
+  fi
+}
 
-echo "Testing GET..."
-redis-benchmark -h $HOST -p $PORT -n $REQUESTS -c $CLIENTS -d $DATASIZE -t get
+# Test Redis connection
+test_redis_connection() {
+  if ! redis-cli -h "$HOST" -p "$PORT" ping &>/dev/null; then
+    echo "Error: Cannot connect to Redis at $HOST:$PORT" >&2
+    exit 1
+  fi
+}
 
-echo "Testing INCR..."
-redis-benchmark -h $HOST -p $PORT -n $REQUESTS -c $CLIENTS -t incr
+# Cleanup function
+finalize_json() {
+  echo "Merging results into final JSON..."
+  python3 <<EOF
+import json, os, glob, datetime
 
-echo "Testing DECR..."
-redis-cli -h $HOST -p $PORT FLUSHALL 2>/dev/null || true
-for i in {1..1000}; do
-    redis-cli -h $HOST -p $PORT SET "counter:$i" 1000 >/dev/null
-done
-redis-benchmark -h $HOST -p $PORT -n $REQUESTS -c $CLIENTS -r 1000 DECR counter:__rand_int__
+# Metadata
+meta = {
+    "timestamp": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+    "host": "$HOST",
+    "port": $PORT,
+    "clients": $CLIENTS,
+    "requests_per_command": $REQUESTS,
+    "data_size": $DATASIZE
+}
 
-echo ""
-echo "====== LIST COMMANDS ======"
+# Load all benchmark results
+benchmarks = {}
+tmpdir = "$TMPDIR"
+for json_file in sorted(glob.glob(os.path.join(tmpdir, "*.json"))):
+    cmd_name = os.path.splitext(os.path.basename(json_file))[0]
+    try:
+        with open(json_file, 'r') as f:
+            benchmarks[cmd_name] = json.load(f)
+    except Exception as e:
+        print(f"Warning: Could not load {json_file}: {e}")
 
-echo "Testing LPUSH..."
-redis-benchmark -h $HOST -p $PORT -n $REQUESTS -c $CLIENTS -t lpush
+# Summary
+summary = {
+    "tested_commands": sorted(benchmarks.keys()),
+    "total_commands_tested": len(benchmarks),
+    "notes": "Percentiles extracted from redis-benchmark latency distribution output"
+}
 
-echo "Testing RPUSH..."
-redis-benchmark -h $HOST -p $PORT -n $REQUESTS -c $CLIENTS -t rpush
+# Final result
+result = {
+    **meta,
+    "benchmarks": benchmarks,
+    "summary": summary
+}
 
-echo "Testing LPOP..."
-# Pre-populate lists for LPOP test
-redis-cli -h $HOST -p $PORT FLUSHALL 2>/dev/null || true
-for i in {1..1000}; do
-    redis-cli -h $HOST -p $PORT LPUSH "list:$i" "item1" "item2" "item3" "item4" "item5" >/dev/null
-done
-redis-benchmark -h $HOST -p $PORT -n $REQUESTS -c $CLIENTS -r 1000 LPOP list:__rand_int__
+# Write final JSON
+try:
+    with open("$BENCHMARK_FILE", 'w') as f:
+        json.dump(result, f, indent=2)
+    print(f"Results written to: $BENCHMARK_FILE")
+except Exception as e:
+    print(f"Error writing final JSON: {e}")
+EOF
 
-echo "Testing RPOP..."
-# Pre-populate lists for RPOP test
-redis-cli -h $HOST -p $PORT FLUSHALL 2>/dev/null || true
-for i in {1..1000}; do
-    redis-cli -h $HOST -p $PORT RPUSH "list:$i" "item1" "item2" "item3" "item4" "item5" >/dev/null
-done
-redis-benchmark -h $HOST -p $PORT -n $REQUESTS -c $CLIENTS -r 1000 RPOP list:__rand_int__
+  # Cleanup temp directory
+  rm -rf "$TMPDIR" 2>/dev/null || true
+}
 
-echo "Testing LLEN..."
-redis-benchmark -h $HOST -p $PORT -n $REQUESTS -c $CLIENTS -t llen
+# Trap for cleanup
+trap 'echo "Interrupted. Cleaning up..."; finalize_json; exit 1' INT TERM
 
-echo "Testing LRANGE..."
-# Pre-populate lists for LRANGE test
-redis-cli -h $HOST -p $PORT FLUSHALL 2>/dev/null || true
-for i in {1..1000}; do
-    redis-cli -h $HOST -p $PORT RPUSH "list:$i" $(seq 1 20) >/dev/null
-done
-redis-benchmark -h $HOST -p $PORT -n $REQUESTS -c $CLIENTS -r 1000 LRANGE list:__rand_int__ 0 9
+# Main benchmark function
+run_benchmark() {
+  local cmd_name="$1"
+  local extra_args="${2:-}"
+  local prefill_fn="${3:-}"
+  
+  echo "=== Benchmarking: $cmd_name ==="
+  
+  # Run prefill if specified
+  if [[ -n "$prefill_fn" ]] && declare -f "$prefill_fn" >/dev/null 2>&1; then
+    echo "Prefilling data..."
+    "$prefill_fn" || true
+  fi
+  
+  # Run the benchmark with timeout
+  local output=""
+  local success=false
+  
+  if output=$(timeout 120 redis-benchmark -h "$HOST" -p "$PORT" -n "$REQUESTS" -c "$CLIENTS" -d "$DATASIZE" -t "$cmd_name" $extra_args 2>&1); then
+    success=true
+  else
+    echo "Warning: Benchmark failed or timed out for $cmd_name"
+    output="Benchmark failed"
+  fi
+  
+  # Parse results
+  local rps=""
+  local avg_latency=""
+  local p50="" p95="" p99=""
+  
+  if [[ "$success" == true ]]; then
+    # Extract requests per second - look for the summary line
+    if rps_line=$(echo "$output" | grep -E "[0-9]+\.[0-9]+ requests per second" | tail -1); then
+      rps=$(echo "$rps_line" | grep -oE '[0-9]+\.[0-9]+' | head -1)
+    fi
+    
+    # Extract completion time and calculate RPS if not found
+    if [[ -z "$rps" ]]; then
+      if time_line=$(echo "$output" | grep -E "[0-9]+ requests completed in [0-9]+\.[0-9]+ seconds"); then
+        local total_time=$(echo "$time_line" | grep -oE '[0-9]+\.[0-9]+')
+        if [[ -n "$total_time" ]] && command -v bc >/dev/null; then
+          rps=$(echo "scale=2; $REQUESTS / $total_time" | bc 2>/dev/null || echo "")
+        fi
+      fi
+    fi
+    
+    # Calculate average latency
+    if [[ -n "$rps" ]] && command -v bc >/dev/null; then
+      avg_latency=$(echo "scale=3; (1000 / $rps)" | bc 2>/dev/null || echo "")
+    fi
+    
+    # Extract percentiles from latency distribution
+    p50=$(echo "$output" | grep -E "50\.000%" | grep -oE '[0-9]+\.[0-9]+' | tail -1 || echo "")
+    p95=$(echo "$output" | grep -E "9[567]\.[0-9]+%" | grep -oE '[0-9]+\.[0-9]+' | tail -1 || echo "")
+    p99=$(echo "$output" | grep -E "99\.[0-9]+%" | grep -oE '[0-9]+\.[0-9]+' | tail -1 || echo "")
+  fi
+  
+  # Create JSON result
+  python3 <<EOF
+import json
 
-echo ""
-echo "====== SORTED SET COMMANDS ======"
+def safe_float(val):
+    try:
+        return float(val) if val and val.strip() else None
+    except:
+        return None
 
-echo "Testing ZADD..."
-redis-benchmark -h $HOST -p $PORT -n $REQUESTS -c $CLIENTS -t zadd
+result = {
+    "requests_per_second": safe_float("$rps"),
+    "average_latency_ms": safe_float("$avg_latency"),
+    "p50_latency_ms": safe_float("$p50"),
+    "p95_latency_ms": safe_float("$p95"),
+    "p99_latency_ms": safe_float("$p99"),
+    "benchmark_succeeded": "$success" == "true"
+}
 
-echo "Testing ZRANGE..."
-# Pre-populate sorted sets
-redis-cli -h $HOST -p $PORT FLUSHALL 2>/dev/null || true
-for i in {1..1000}; do
-    for j in {1..20}; do
-        redis-cli -h $HOST -p $PORT ZADD "zset:$i" $j "member:$j" >/dev/null
+with open("$TMPDIR/$cmd_name.json", 'w') as f:
+    json.dump(result, f, indent=2)
+
+rps_value = result['requests_per_second'] if result['requests_per_second'] is not None else 0
+print(f"✓ $cmd_name: {rps_value:.0f} req/sec")
+EOF
+}
+
+# Prefill functions
+prefill_counters() {
+  redis-cli -h "$HOST" -p "$PORT" FLUSHALL >/dev/null 2>&1 || true
+  for i in {1..50}; do
+    redis-cli -h "$HOST" -p "$PORT" SET "counter:$i" 1000 >/dev/null 2>&1 || true
+  done
+}
+
+prefill_lists() {
+  redis-cli -h "$HOST" -p "$PORT" FLUSHALL >/dev/null 2>&1 || true
+  for i in {1..50}; do
+    for j in {1..10}; do
+      redis-cli -h "$HOST" -p "$PORT" RPUSH "list:$i" "item$j" >/dev/null 2>&1 || true
     done
-done
-redis-benchmark -h $HOST -p $PORT -n $REQUESTS -c $CLIENTS -r 1000 ZRANGE zset:__rand_int__ 0 9
+  done
+}
 
-echo "Testing ZRANK..."
-redis-benchmark -h $HOST -p $PORT -n $REQUESTS -c $CLIENTS -r 1000 -r 20 ZRANK zset:__rand_int__ member:__rand_int__
+prefill_zsets() {
+  redis-cli -h "$HOST" -p "$PORT" FLUSHALL >/dev/null 2>&1 || true
+  for i in {1..50}; do
+    for j in {1..10}; do
+      redis-cli -h "$HOST" -p "$PORT" ZADD "zset:$i" "$j" "member$j" >/dev/null 2>&1 || true
+    done
+  done
+}
 
-echo "Testing ZSCORE..."
-redis-benchmark -h $HOST -p $PORT -n $REQUESTS -c $CLIENTS -r 1000 -r 20 ZSCORE zset:__rand_int__ member:__rand_int__
+prefill_mixed() {
+  redis-cli -h "$HOST" -p "$PORT" FLUSHALL >/dev/null 2>&1 || true
+  for i in {1..50}; do
+    redis-cli -h "$HOST" -p "$PORT" SET "str:$i" "value" >/dev/null 2>&1 || true
+    redis-cli -h "$HOST" -p "$PORT" LPUSH "list:$i" "item" >/dev/null 2>&1 || true
+    redis-cli -h "$HOST" -p "$PORT" ZADD "zset:$i" 1 "member" >/dev/null 2>&1 || true
+  done
+}
 
-echo "Testing ZCARD..."
-redis-benchmark -h $HOST -p $PORT -n $REQUESTS -c $CLIENTS -r 1000 ZCARD zset:__rand_int__
+# Custom benchmark for commands not supported by redis-benchmark
+run_custom_benchmark() {
+  local cmd_name="$1"
+  local iterations="$2"
+  local setup_cmd="$3"
+  local test_cmd="$4"
+  
+  echo "=== Custom Benchmarking: $cmd_name ==="
+  
+  # Setup
+  eval "$setup_cmd" 2>/dev/null || true
+  
+  # Time the operations
+  local start_time end_time duration rps avg_latency
+  start_time=$(date +%s.%N 2>/dev/null || date +%s)
+  
+  for ((i=1; i<=iterations; i++)); do
+    eval "$test_cmd" >/dev/null 2>&1 || true
+  done
+  
+  end_time=$(date +%s.%N 2>/dev/null || date +%s)
+  
+  # Calculate metrics
+  if command -v bc >/dev/null; then
+    duration=$(echo "$end_time - $start_time" | bc 2>/dev/null || echo "1")
+    rps=$(echo "scale=2; $iterations / $duration" | bc 2>/dev/null || echo "0")
+    avg_latency=$(echo "scale=3; $duration * 1000 / $iterations" | bc 2>/dev/null || echo "0")
+  else
+    rps="0"
+    avg_latency="0"
+  fi
+  
+  # Create JSON
+  python3 <<EOF
+import json
 
-echo "Testing ZREM..."
-redis-benchmark -h $HOST -p $PORT -n $REQUESTS -c $CLIENTS -r 1000 -r 20 ZREM zset:__rand_int__ member:__rand_int__
+result = {
+    "requests_per_second": float("$rps") if "$rps" != "0" else None,
+    "average_latency_ms": float("$avg_latency") if "$avg_latency" != "0" else None,
+    "p50_latency_ms": None,
+    "p95_latency_ms": None,
+    "p99_latency_ms": None,
+    "benchmark_succeeded": True,
+    "custom_benchmark": True,
+    "iterations": $iterations
+}
 
-echo ""
-echo "====== SERVER COMMANDS ======"
+with open("$TMPDIR/$cmd_name.json", 'w') as f:
+    json.dump(result, f, indent=2)
 
-echo "Testing PING..."
-redis-benchmark -h $HOST -p $PORT -n $REQUESTS -c $CLIENTS -t ping
+rps_value = result['requests_per_second'] if result['requests_per_second'] is not None else 0
+print(f"✓ $cmd_name: {rps_value:.0f} req/sec")
+EOF
+}
 
-echo "Testing ECHO..."
-redis-benchmark -h $HOST -p $PORT -n $REQUESTS -c $CLIENTS ECHO "hello world"
+# Main execution
+main() {
+  check_dependencies
+  test_redis_connection
+  
+  mkdir -p "$TMPDIR"
+  
+  echo "====== REDIS BENCHMARK SUITE ======"
+  echo "Host: $HOST:$PORT | Clients: $CLIENTS | Requests: $REQUESTS"
+  echo "Results will be saved to: $BENCHMARK_FILE"
+  echo ""
+  
+  # Standard benchmarks
+  run_benchmark "SET"
+  run_benchmark "GET"
+  run_benchmark "INCR"
+  run_benchmark "DECR" "" "prefill_counters"
+  
+  run_benchmark "LPUSH"
+  run_benchmark "RPUSH"
+  run_benchmark "LPOP" "" "prefill_lists"
+  run_benchmark "RPOP" "" "prefill_lists"
+  run_benchmark "LLEN" "" "prefill_lists"
+  run_benchmark "LRANGE" "" "prefill_lists"
+  
+  run_benchmark "ZADD"
+  run_benchmark "ZRANGE" "" "prefill_zsets"
+  run_benchmark "ZRANK" "" "prefill_zsets"
+  run_benchmark "ZSCORE" "" "prefill_zsets"
+  run_benchmark "ZCARD" "" "prefill_zsets"
+  run_benchmark "ZREM" "" "prefill_zsets"
+  
+  run_benchmark "PING"
+  run_benchmark "ECHO"
+  run_benchmark "TYPE" "" "prefill_mixed"
+  
+  # Custom benchmarks for commands not in redis-benchmark
+  run_custom_benchmark "KEYS" 100 \
+    'redis-cli -h "$HOST" -p "$PORT" FLUSHALL; for i in {1..200}; do redis-cli -h "$HOST" -p "$PORT" SET "key:$i" "value" >/dev/null 2>&1; done' \
+    'redis-cli -h "$HOST" -p "$PORT" KEYS "key:*"'
+  
+  run_custom_benchmark "INFO" 500 \
+    '' \
+    'redis-cli -h "$HOST" -p "$PORT" INFO'
+  
+  run_custom_benchmark "FLUSHALL" 50 \
+    'redis-cli -h "$HOST" -p "$PORT" SET testkey testvalue' \
+    'redis-cli -h "$HOST" -p "$PORT" FLUSHALL'
+  
+  run_custom_benchmark "XADD" 1000 \
+    'redis-cli -h "$HOST" -p "$PORT" FLUSHALL' \
+    'redis-cli -h "$HOST" -p "$PORT" XADD teststream "*" field value'
+  
+  run_custom_benchmark "MULTI_EXEC" 200 \
+    'redis-cli -h "$HOST" -p "$PORT" FLUSHALL' \
+    'echo -e "MULTI\nSET key value\nINCR counter\nEXEC" | redis-cli -h "$HOST" -p "$PORT" --pipe'
+  
+  echo ""
+  finalize_json
+  
+  echo ""
+  echo "✅ Benchmark completed successfully!"
+  echo "📊 Results saved to: $BENCHMARK_FILE"
+}
 
-echo "Testing TYPE..."
-# Pre-populate various data types
-redis-cli -h $HOST -p $PORT FLUSHALL 2>/dev/null || true
-for i in {1..1000}; do
-    redis-cli -h $HOST -p $PORT SET "string:$i" "value" >/dev/null
-    redis-cli -h $HOST -p $PORT LPUSH "list:$i" "item" >/dev/null
-    redis-cli -h $HOST -p $PORT ZADD "zset:$i" 1 "member" >/dev/null
-done
-redis-benchmark -h $HOST -p $PORT -n $REQUESTS -c $CLIENTS -r 1000 TYPE string:__rand_int__
-
-echo ""
-echo "====== STREAM COMMANDS (Manual Test) ======"
-echo "Note: XADD, XRANGE, XREAD require manual testing due to complex syntax"
-
-echo "Testing XADD performance..."
-# Simple XADD benchmark
-start_time=$(date +%s.%N)
-for i in {1..1000}; do
-    redis-cli -h $HOST -p $PORT XADD "stream:test" "*" "field" "value$i" >/dev/null
-done
-end_time=$(date +%s.%N)
-duration=$(echo "$end_time - $start_time" | bc)
-throughput=$(echo "scale=2; 1000 / $duration" | bc)
-echo "XADD: 1000 requests completed in $duration seconds"
-echo "XADD Throughput: $throughput req/sec"
-
-echo ""
-echo "====== TRANSACTION COMMANDS (Manual Test) ======"
-echo "Note: MULTI/EXEC/WATCH require manual testing due to stateful nature"
-
-echo "Testing MULTI/EXEC performance..."
-start_time=$(date +%s.%N)
-for i in {1..1000}; do
-    {
-        echo "MULTI"
-        echo "SET key:$i value:$i"
-        echo "INCR counter"
-        echo "EXEC"
-    } | redis-cli -h $HOST -p $PORT --pipe >/dev/null
-done
-end_time=$(date +%s.%N)
-duration=$(echo "$end_time - $start_time" | bc)
-throughput=$(echo "scale=2; 1000 / $duration" | bc)
-echo "MULTI/EXEC: 1000 transactions completed in $duration seconds"
-echo "Transaction Throughput: $throughput transactions/sec"
-
-echo ""
-echo "====== CUSTOM BENCHMARKS FOR MISSING COMMANDS ======"
-
-echo "Testing KEYS..."
-redis-cli -h $HOST -p $PORT FLUSHALL 2>/dev/null || true
-for i in {1..1000}; do
-    redis-cli -h $HOST -p $PORT SET "user:$i" "data" >/dev/null
-    redis-cli -h $HOST -p $PORT SET "product:$i" "info" >/dev/null
-done
-start_time=$(date +%s.%N)
-for i in {1..100}; do
-    redis-cli -h $HOST -p $PORT KEYS "user:*" >/dev/null
-done
-end_time=$(date +%s.%N)
-duration=$(echo "$end_time - $start_time" | bc)
-throughput=$(echo "scale=2; 100 / $duration" | bc)
-echo "KEYS: 100 pattern matches completed in $duration seconds"
-echo "KEYS Throughput: $throughput req/sec"
-
-echo "Testing INFO..."
-redis-benchmark -h $HOST -p $PORT -n 1000 -c 10 INFO
-
-echo ""
-echo "====== BLOCKING OPERATIONS TEST ======"
-echo "Note: BLPOP/BRPOP require separate terminals for proper testing"
-echo "Run this in terminal 1: redis-cli BLPOP testlist 10"
-echo "Run this in terminal 2: redis-cli LPUSH testlist item"
-
-echo ""
-echo "====== PUB/SUB TEST ======"
-echo "Note: PUBLISH/SUBSCRIBE require separate terminals"
-echo "Run this in terminal 1: redis-cli SUBSCRIBE testchannel"
-echo "Run this in terminal 2: redis-cli PUBLISH testchannel 'hello'"
-
-echo ""
-echo "====== BENCHMARK COMPLETE ======"
-echo "Summary of tested commands:"
-echo "✓ String: GET, SET, INCR, DECR"
-echo "✓ List: LPUSH, RPUSH, LPOP, RPOP, LLEN, LRANGE"
-echo "✓ Sorted Set: ZADD, ZRANGE, ZRANK, ZSCORE, ZCARD, ZREM"  
-echo "✓ Server: PING, ECHO, TYPE, KEYS, INFO"
-echo "✓ Stream: XADD (custom test)"
-echo "✓ Transaction: MULTI/EXEC (custom test)"
-echo "⚠ Manual testing required: BLPOP, BRPOP, SUBSCRIBE, PUBLISH, XREAD, WATCH"
+# Run main function
+main "$@"
