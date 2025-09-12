@@ -36,7 +36,7 @@ public final class AddStreamCommand extends WriteCommand {
     }
 
     @Override
-    protected ValidationResult performValidation(CommandContext context) {
+    protected ValidationResult performValidation(final CommandContext context) {
         return CommandValidator.minArgs(MIN_ARGUMENTS).and(
                 CommandValidator.evenArgCount()).and(
                         CommandValidator.streamIdArg(STREAM_ID_INDEX))
@@ -45,20 +45,20 @@ public final class AddStreamCommand extends WriteCommand {
     }
 
     @Override
-    protected CommandResult executeInternal(CommandContext context) {
-        String streamKey = context.getKey();
-        String streamId = context.getArg(STREAM_ID_INDEX);
-        Map<String, String> fieldValueMap = context.getFieldValueMap(FIELD_START_INDEX);
+    protected CommandResult executeInternal(final CommandContext context) {
+        final String streamKey = context.getKey();
+        final String streamId = context.getArg(STREAM_ID_INDEX);
+        final Map<String, String> fieldValueMap = context.getFieldValueMap(FIELD_START_INDEX);
 
         try {
-            String entryId = context.getStorageService().addStreamEntry(
+            final String entryId = context.getStorageService().addStreamEntry(
                     streamKey, streamId, fieldValueMap, ExpiryPolicy.never());
             publishDataAdded(streamKey, context.getServerContext());
             propagateCommand(context.getArgs(), context.getServerContext());
 
             LOGGER.debug("Stream entry added: key={}, id={}", streamKey, entryId);
             return CommandResult.success(ResponseBuilder.bulkString(entryId));
-        } catch (IllegalArgumentException e) {
+        } catch (final IllegalArgumentException e) {
             LOGGER.info("Failed to add stream entry: {}", e.getMessage());
             return CommandResult.error(e.getMessage());
         }

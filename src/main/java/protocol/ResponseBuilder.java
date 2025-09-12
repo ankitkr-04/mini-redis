@@ -27,12 +27,10 @@ public final class ResponseBuilder {
     // Protocol response prefixes
     private static final String SIMPLE_STRING_PREFIX = "+";
     private static final String ERROR_PREFIX = "-ERR ";
-    private static final String INTEGER_PREFIX = ":";
     private static final String BULK_STRING_PREFIX = "$";
     private static final String ARRAY_PREFIX = "*";
     private static final String FULLRESYNC_PREFIX = "+FULLRESYNC ";
     private static final String CONTINUE_PREFIX = "+CONTINUE";
-    private static final String NIL_BULK_STRING = "$-1";
     private static final String CRLF = ProtocolConstants.CRLF;
 
     private ResponseBuilder() {

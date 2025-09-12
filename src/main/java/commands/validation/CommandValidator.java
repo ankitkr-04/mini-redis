@@ -3,6 +3,7 @@ package commands.validation;
 import java.util.function.Predicate;
 
 import commands.context.CommandContext;
+import utils.GeoUtils;
 
 /**
  * Provides reusable validation utilities for command arguments.
@@ -42,9 +43,9 @@ public final class CommandValidator {
         /**
          * Chains this validation with another one, requiring both to pass.
          */
-        default CommandValidation and(CommandValidation other) {
+        default CommandValidation and(final CommandValidation other) {
             return ctx -> {
-                ValidationResult result = this.validate(ctx);
+                final ValidationResult result = this.validate(ctx);
                 return result.isValid() ? other.validate(ctx) : result;
             };
         }
@@ -52,9 +53,9 @@ public final class CommandValidator {
         /**
          * Chains this validation with another one, requiring at least one to pass.
          */
-        default CommandValidation or(CommandValidation other) {
+        default CommandValidation or(final CommandValidation other) {
             return ctx -> {
-                ValidationResult result = this.validate(ctx);
+                final ValidationResult result = this.validate(ctx);
                 return result.isValid() ? result : other.validate(ctx);
             };
         }
@@ -67,8 +68,8 @@ public final class CommandValidator {
     /**
      * Applies a validation only when a condition on the context is true.
      */
-    public static CommandValidation when(Predicate<CommandContext> condition,
-            CommandValidation thenValidation) {
+    public static CommandValidation when(final Predicate<CommandContext> condition,
+            final CommandValidation thenValidation) {
         return ctx -> condition.test(ctx)
                 ? thenValidation.validate(ctx)
                 : ValidationResult.valid();
@@ -77,9 +78,9 @@ public final class CommandValidator {
     /**
      * Validates that the argument count matches the expected value.
      */
-    public static CommandValidation argCount(int expectedCount) {
+    public static CommandValidation argCount(final int expectedCount) {
         return context -> {
-            int actualCount = context.getArgCount();
+            final int actualCount = context.getArgCount();
             if (actualCount != expectedCount) {
                 return ValidationResult.invalid(
                         "Expected " + expectedCount + ARGUMENTS_GOT + actualCount);
@@ -91,9 +92,9 @@ public final class CommandValidator {
     /**
      * Validates that the argument count falls within the given range.
      */
-    public static CommandValidation argRange(int minCount, int maxCount) {
+    public static CommandValidation argRange(final int minCount, final int maxCount) {
         return context -> {
-            int actualCount = context.getArgCount();
+            final int actualCount = context.getArgCount();
             if (actualCount < minCount || actualCount > maxCount) {
                 return ValidationResult.invalid(
                         "Expected " + minCount + "-" + maxCount + ARGUMENTS_GOT + actualCount);
@@ -103,11 +104,58 @@ public final class CommandValidator {
     }
 
     /**
+     * Validates that coordinates (longitude, latitude) appear in triplets
+     * starting from the given index.
+     * <p>
+     * Each triplet consists of longitude, latitude, and a place name.
+     * Longitude must be between -180 and 180.
+     * Latitude must be between -85.05112878 and 85.05112878.
+     * </p>
+     *
+     * @param startIndex the index where the first longitude appears
+     * @return a CommandValidation that checks coordinate triplets
+     */
+    public static CommandValidation validateCoordinates(final int startIndex) {
+        return context -> {
+            final int argCount = context.getArgCount();
+
+            // Must be divisible into triplets
+            if ((argCount - startIndex) % 3 != 0) {
+                return ValidationResult.invalid(
+                        "Arguments after index " + startIndex +
+                                " must come in triplets of longitude, latitude, and member");
+            }
+
+            for (int i = startIndex; i < argCount; i += 3) {
+                try {
+                    final double longitude = Double.parseDouble(context.getArg(i));
+                    final double latitude = Double.parseDouble(context.getArg(i + 1));
+                    // Member = context.getArg(i + 2), no validation needed here
+
+                    if (!GeoUtils.isValidLongitude(longitude)) {
+                        return ValidationResult.invalid(
+                                "longitude value (" + longitude + ") is invalid");
+                    }
+                    if (!GeoUtils.isValidLatitude(latitude)) {
+                        return ValidationResult.invalid(
+                                "latitude value (" + latitude + ") is invalid");
+                    }
+                } catch (final NumberFormatException e) {
+                    return ValidationResult.invalid(
+                            "invalid number format for longitude/latitude at index " + i);
+                }
+            }
+
+            return ValidationResult.valid();
+        };
+    }
+
+    /**
      * Validates that there are at least {@code minCount} arguments.
      */
-    public static CommandValidation minArgs(int minCount) {
+    public static CommandValidation minArgs(final int minCount) {
         return context -> {
-            int actualCount = context.getArgCount();
+            final int actualCount = context.getArgCount();
             if (actualCount < minCount) {
                 return ValidationResult.invalid(
                         "Expected at least " + minCount + ARGUMENTS_GOT + actualCount);
@@ -119,9 +167,9 @@ public final class CommandValidator {
     /**
      * Validates that arguments after the given index appear in pairs.
      */
-    public static CommandValidation pairsAfter(int startIndex) {
+    public static CommandValidation pairsAfter(final int startIndex) {
         return context -> {
-            int remainingArgs = context.getArgCount() - startIndex;
+            final int remainingArgs = context.getArgCount() - startIndex;
             if (remainingArgs % 2 != 0) {
                 return ValidationResult.invalid(
                         "Arguments after index " + startIndex + " must come in pairs");
@@ -151,13 +199,13 @@ public final class CommandValidator {
     /**
      * Validates that the argument at the given index matches the expected string.
      */
-    public static CommandValidation argEquals(int index, String expectedValue) {
+    public static CommandValidation argEquals(final int index, final String expectedValue) {
         return context -> {
-            int argCount = context.getArgCount();
+            final int argCount = context.getArgCount();
             if (index >= argCount) {
                 return ValidationResult.invalid("Argument index " + index + " out of bounds");
             }
-            String actualValue = context.getArg(index);
+            final String actualValue = context.getArg(index);
             if (!expectedValue.equalsIgnoreCase(actualValue)) {
                 return ValidationResult.invalid(
                         "Expected argument at index " + index + " to be '" + expectedValue + "'");
@@ -169,10 +217,10 @@ public final class CommandValidator {
     /**
      * Validates that arguments at the given indexes are integers.
      */
-    public static CommandValidation intArg(int... indexes) {
+    public static CommandValidation intArg(final int... indexes) {
         return context -> {
-            for (int index : indexes) {
-                ValidationResult result = validateInteger(context.getArg(index));
+            for (final int index : indexes) {
+                final ValidationResult result = validateInteger(context.getArg(index));
                 if (!result.isValid()) {
                     return result;
                 }
@@ -184,21 +232,21 @@ public final class CommandValidator {
     /**
      * Validates that the argument at the given index is a double.
      */
-    public static CommandValidation doubleArg(int index) {
+    public static CommandValidation doubleArg(final int index) {
         return context -> validateDouble(context.getArg(index));
     }
 
     /**
      * Validates that the argument at the given index is a valid timeout.
      */
-    public static CommandValidation timeoutArg(int index) {
+    public static CommandValidation timeoutArg(final int index) {
         return context -> validateTimeout(context.getArg(index));
     }
 
     /**
      * Validates that the argument at the given index is a valid stream ID.
      */
-    public static CommandValidation streamIdArg(int index) {
+    public static CommandValidation streamIdArg(final int index) {
         return context -> validateStreamId(context.getArg(index));
     }
 
@@ -209,11 +257,11 @@ public final class CommandValidator {
     /**
      * Validates that a string can be parsed as an integer.
      */
-    public static ValidationResult validateInteger(String value) {
+    public static ValidationResult validateInteger(final String value) {
         try {
             Integer.parseInt(value);
             return ValidationResult.valid();
-        } catch (NumberFormatException e) {
+        } catch (final NumberFormatException e) {
             return ValidationResult.invalid("Invalid integer: " + value);
         }
     }
@@ -221,11 +269,11 @@ public final class CommandValidator {
     /**
      * Validates that a string can be parsed as a double.
      */
-    public static ValidationResult validateDouble(String value) {
+    public static ValidationResult validateDouble(final String value) {
         try {
             Double.parseDouble(value);
             return ValidationResult.valid();
-        } catch (NumberFormatException e) {
+        } catch (final NumberFormatException e) {
             return ValidationResult.invalid("Invalid number: " + value);
         }
     }
@@ -233,13 +281,13 @@ public final class CommandValidator {
     /**
      * Validates that a string can be parsed as a non-negative timeout value.
      */
-    public static ValidationResult validateTimeout(String value) {
+    public static ValidationResult validateTimeout(final String value) {
         try {
-            double timeout = Double.parseDouble(value);
+            final double timeout = Double.parseDouble(value);
             return timeout < 0
                     ? ValidationResult.invalid("Timeout cannot be negative")
                     : ValidationResult.valid();
-        } catch (NumberFormatException e) {
+        } catch (final NumberFormatException e) {
             return ValidationResult.invalid("Invalid timeout: " + value);
         }
     }
@@ -247,7 +295,7 @@ public final class CommandValidator {
     /**
      * Validates that a string is a valid stream ID.
      */
-    public static ValidationResult validateStreamId(String id) {
+    public static ValidationResult validateStreamId(final String id) {
         if (id == null || id.isEmpty()) {
             return ValidationResult.invalid("Stream ID cannot be empty");
         }

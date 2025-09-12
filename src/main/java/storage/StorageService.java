@@ -11,13 +11,11 @@ import org.slf4j.LoggerFactory;
 import collections.QuickZSet;
 import events.EventPublisher;
 import storage.expiry.ExpiryPolicy;
-import storage.repositories.ListRepository;
-import storage.repositories.StreamRepository;
-import storage.repositories.StringRepository;
-import storage.repositories.ZSetRepository;
+import storage.repositories.*;
 import storage.types.StoredValue;
 import storage.types.ValueType;
 import storage.types.streams.StreamRangeEntry;
+import utils.GeoUtils.GEO_UNIT;
 
 /**
  * StorageService provides a unified interface for working with
@@ -47,6 +45,7 @@ public final class StorageService {
     private final ListRepository listRepository;
     private final StreamRepository streamRepository;
     private final ZSetRepository zSetRepository;
+    private final GeoRepository geoRepository;
 
     private EventPublisher eventPublisher;
 
@@ -55,6 +54,7 @@ public final class StorageService {
         this.listRepository = new ListRepository(store);
         this.streamRepository = new StreamRepository(store);
         this.zSetRepository = new ZSetRepository(store);
+        this.geoRepository = new GeoRepository(store);
     }
 
     public void setEventPublisher(final EventPublisher eventPublisher) {
@@ -281,6 +281,40 @@ public final class StorageService {
         return rank;
     }
 
+    /* ---------- GEO operations ---------- */
+    public boolean geoAdd(final String key, final double longitude, final double latitude, final String member,
+            final ExpiryPolicy expiry) {
+
+        final boolean isNewKey = !geoRepository.exists(key);
+        final boolean added = geoRepository.geoAdd(key, longitude, latitude, member, expiry);
+        recordWriteMetrics(isNewKey, TYPE_ZSET); // or TYPE_ZSET if you want Redis-compatible
+        notifyKeyModified(key);
+        return added;
+    }
+
+    public Double geoDist(final String key, final String member1, final String member2) {
+        return geoDist(key, member1, member2, GEO_UNIT.M);
+    }
+
+    public Double geoDist(final String key, final String member1, final String member2, final GEO_UNIT unit) {
+        final Double distance = geoRepository.geoDist(key, member1, member2, unit);
+        recordReadMetrics(distance != null);
+        return distance;
+    }
+
+    public Map<String, double[]> geoPos(final String key, final List<String> members) {
+        final Map<String, double[]> positions = geoRepository.geoPos(key, members);
+        recordReadMetrics(!positions.isEmpty());
+        return positions;
+    }
+
+    public List<String> geoSearch(final String key, final double longitude, final double latitude,
+            final double radiusMeters) {
+        final List<String> results = geoRepository.geoSearch(key, longitude, latitude, radiusMeters);
+        recordReadMetrics(!results.isEmpty());
+        return results;
+    }
+
     /* ---------- General operations ---------- */
 
     public boolean exists(final String key) {
@@ -348,6 +382,7 @@ public final class StorageService {
                 case LIST -> metricsCollector.decrementKeyCount(TYPE_LIST);
                 case STREAM -> metricsCollector.decrementKeyCount(TYPE_STREAM);
                 case ZSET -> metricsCollector.decrementKeyCount(TYPE_ZSET);
+
                 // case HASH -> metricsCollector.decrementKeyCount(TYPE_HASH);
                 // case SET -> metricsCollector.decrementKeyCount(TYPE_SET);
                 default -> {

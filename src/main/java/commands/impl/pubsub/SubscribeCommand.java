@@ -35,27 +35,27 @@ public class SubscribeCommand extends PubSubCommand {
     }
 
     @Override
-    protected ValidationResult performValidation(CommandContext context) {
+    protected ValidationResult performValidation(final CommandContext context) {
         // Requires at least command name and one channel/pattern
         return CommandValidator.minArgs(MIN_ARGUMENTS).validate(context);
     }
 
     @Override
-    protected CommandResult executeInternal(CommandContext context) {
-        List<String> channels = context.getSlice(1, context.getArgCount());
-        var clientChannel = context.getClientChannel();
-        var pubSubManager = context.getServerContext().getPubSubManager();
+    protected CommandResult executeInternal(final CommandContext context) {
+        final List<String> channels = context.getSlice(1, context.getArgCount());
+        final var clientChannel = context.getClientChannel();
+        final var pubSubManager = context.getServerContext().getPubSubManager();
 
         if (channels.isEmpty()) {
             return CommandResult.async(); // no-op, stay in pubsub mode
         }
 
-        List<ByteBuffer> replies = new ArrayList<>();
-        for (String channel : channels) {
+        final List<ByteBuffer> replies = new ArrayList<>();
+        for (final String channel : channels) {
             pubSubManager.subscribe(clientChannel, List.of(channel));
-            int subscriptionCount = pubSubManager.subscriptionCount(clientChannel);
+            final int subscriptionCount = pubSubManager.subscriptionCount(clientChannel);
 
-            var ack = ResponseBuilder.arrayOfBuffers(List.of(
+            final var ack = ResponseBuilder.arrayOfBuffers(List.of(
                     ResponseBuilder.bulkString("subscribe"),
                     ResponseBuilder.bulkString(channel),
                     ResponseBuilder.integer(subscriptionCount)));

@@ -24,8 +24,8 @@ public final class CommandRegistry {
      * 
      * @param command the command to register
      */
-    public void register(Command command) {
-        String commandName = normalizeName(command.getName());
+    public void register(final Command command) {
+        final String commandName = normalizeName(command.getName());
         commandMap.put(commandName, command);
         LOGGER.debug("Registered command: {}", commandName);
     }
@@ -36,10 +36,10 @@ public final class CommandRegistry {
      * @param command the command to register
      * @param aliases alternative names for the command
      */
-    public void register(Command command, String... aliases) {
+    public void register(final Command command, final String... aliases) {
         register(command);
-        for (String alias : aliases) {
-            String normalizedAlias = normalizeName(alias);
+        for (final String alias : aliases) {
+            final String normalizedAlias = normalizeName(alias);
             commandMap.put(normalizedAlias, command);
             LOGGER.debug("Registered alias '{}' for command '{}'", normalizedAlias, command.getName());
         }
@@ -51,7 +51,7 @@ public final class CommandRegistry {
      * @param name the name or alias of the command
      * @return the Command instance, or null if not found
      */
-    public Command getCommand(String name) {
+    public Command getCommand(final String name) {
         return commandMap.get(normalizeName(name));
     }
 
@@ -61,7 +61,7 @@ public final class CommandRegistry {
      * @param name the name or alias to check
      * @return true if the command exists, false otherwise
      */
-    public boolean hasCommand(String name) {
+    public boolean hasCommand(final String name) {
         return commandMap.containsKey(normalizeName(name));
     }
 
@@ -80,7 +80,7 @@ public final class CommandRegistry {
      * @param name the command name or alias
      * @return the normalized name
      */
-    private String normalizeName(String name) {
+    private String normalizeName(final String name) {
         return name == null ? null : name.toUpperCase();
     }
 }
