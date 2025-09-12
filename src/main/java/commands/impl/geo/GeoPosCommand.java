@@ -12,6 +12,14 @@ import commands.validation.ValidationResult;
 import protocol.ResponseBuilder;
 import utils.GeoUtils;
 
+/**
+ * Implementation of Redis GEOPOS command.
+ * 
+ * Syntax: GEOPOS key member [member ...]
+ * 
+ * Returns longitude and latitude coordinates for the specified members.
+ * For non-existing members, null values are returned in the response array.
+ */
 public class GeoPosCommand extends ReadCommand {
 
     private static final String COMMAND_NAME = "GEOPOS";
@@ -23,7 +31,7 @@ public class GeoPosCommand extends ReadCommand {
 
     @Override
     protected ValidationResult performValidation(final CommandContext context) {
-        // At least: GEOPOS key member [member ...]
+        // Require at least: GEOPOS key member [member ...]
         return CommandValidator.minArgs(3).validate(context);
     }
 
@@ -31,14 +39,21 @@ public class GeoPosCommand extends ReadCommand {
     protected CommandResult executeInternal(final CommandContext context) {
         final var storage = context.getStorageService();
         final String key = context.getKey();
+        
+        // Extract member names from arguments (starting from index 2)
         final List<String> members = context.getSlice(2, context.getArgCount());
 
-        final Map<String, double[]> memberCoords = storage.geoPos(key, members);
+        try {
+            // Get coordinates for all requested members
+            final Map<String, double[]> memberCoordinates = storage.geoPos(key, members);
 
-        // Produce a list of ByteBuffers for RESP
-        final List<ByteBuffer> respList = GeoUtils.formatGeoPosForResp(members, memberCoords);
+            // Format response as RESP protocol arrays
+            final List<ByteBuffer> responseList = GeoUtils.formatGeoPosResponse(members, memberCoordinates);
 
-        return CommandResult.success(ResponseBuilder.arrayOfBuffers(respList));
+            return CommandResult.success(ResponseBuilder.arrayOfBuffers(responseList));
+            
+        } catch (final Exception e) {
+            return CommandResult.error("Error retrieving positions: " + e.getMessage());
+        }
     }
-
 }

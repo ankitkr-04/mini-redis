@@ -9,6 +9,14 @@ import protocol.ResponseBuilder;
 import storage.expiry.ExpiryPolicy;
 import utils.GeoUtils;
 
+/**
+ * Implementation of Redis GEOADD command.
+ * 
+ * Syntax: GEOADD key longitude latitude member [longitude latitude member ...]
+ * 
+ * Adds one or more geospatial members to the specified key.
+ * Returns the number of elements added to the set.
+ */
 public class GeoAddCommand extends WriteCommand {
 
     private static final String COMMAND_NAME = "GEOADD";
@@ -20,21 +28,36 @@ public class GeoAddCommand extends WriteCommand {
 
     @Override
     protected ValidationResult performValidation(final CommandContext context) {
-        // at least: GEOADD key lon lat member
+        // Require at least: GEOADD key longitude latitude member
         return CommandValidator.validateCoordinates(2).validate(context);
     }
 
     @Override
     protected CommandResult executeInternal(final CommandContext context) {
-
-        int added = 0;
-        for (final GeoUtils.GeoEntry e : GeoUtils.parseGeoEntries(context.getArgs())) {
-            final boolean ok = context.getStorageService().geoAdd(context.getKey(), e.lon(), e.lat(), e.member(),
+        final var storage = context.getStorageService();
+        final String key = context.getKey();
+        
+        int addedCount = 0;
+        
+        try {
+            // Parse all coordinate/member triplets from the command
+            for (final GeoUtils.GeoEntry entry : GeoUtils.parseGeoEntries(context.getArgs())) {
+                final boolean wasAdded = storage.geoAdd(
+                    key, 
+                    entry.longitude(), 
+                    entry.latitude(), 
+                    entry.member(),
                     ExpiryPolicy.never());
-            if (ok)
-                added++;
+                    
+                if (wasAdded) {
+                    addedCount++;
+                }
+            }
+            
+            return CommandResult.success(ResponseBuilder.integer(addedCount));
+            
+        } catch (final IllegalArgumentException e) {
+            return CommandResult.error("Invalid coordinates: " + e.getMessage());
         }
-
-        return CommandResult.success(ResponseBuilder.integer(added));
     }
 }

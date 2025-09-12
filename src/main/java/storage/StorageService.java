@@ -15,7 +15,7 @@ import storage.repositories.*;
 import storage.types.StoredValue;
 import storage.types.ValueType;
 import storage.types.streams.StreamRangeEntry;
-import utils.GeoUtils.GEO_UNIT;
+import utils.GeoUtils.GeoUnit;
 
 /**
  * StorageService provides a unified interface for working with
@@ -293,17 +293,17 @@ public final class StorageService {
     }
 
     public Double geoDist(final String key, final String member1, final String member2) {
-        return geoDist(key, member1, member2, GEO_UNIT.M);
+        return geoDist(key, member1, member2, GeoUnit.METERS);
     }
 
-    public Double geoDist(final String key, final String member1, final String member2, final GEO_UNIT unit) {
-        final Double distance = geoRepository.geoDist(key, member1, member2, unit);
+    public Double geoDist(final String key, final String member1, final String member2, final GeoUnit unit) {
+        final Double distance = geoRepository.geoDistance(key, member1, member2, unit);
         recordReadMetrics(distance != null);
         return distance;
     }
 
     public Map<String, double[]> geoPos(final String key, final List<String> members) {
-        final Map<String, double[]> positions = geoRepository.geoPos(key, members);
+        final Map<String, double[]> positions = geoRepository.geoPosition(key, members);
         recordReadMetrics(!positions.isEmpty());
         return positions;
     }

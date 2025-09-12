@@ -8,9 +8,19 @@ import commands.validation.ValidationResult;
 import protocol.ResponseBuilder;
 import utils.GeoUtils;
 
+/**
+ * Implementation of Redis GEODIST command.
+ * 
+ * Syntax: GEODIST key member1 member2 [unit]
+ * 
+ * Calculates the distance between two members in a geospatial set.
+ * Supported units: m (meters), km (kilometers), mi (miles), ft (feet)
+ * Default unit is meters if not specified.
+ */
 public class GeoDistCommand extends ReadCommand {
 
     private static final String COMMAND_NAME = "GEODIST";
+    private static final String DEFAULT_UNIT = "m";
 
     @Override
     public String getName() {
@@ -19,7 +29,8 @@ public class GeoDistCommand extends ReadCommand {
 
     @Override
     protected ValidationResult performValidation(final CommandContext context) {
-        return CommandValidator.argRange(4, 5).validate(context); // GEODIST key member1 member2 [unit]
+        // GEODIST key member1 member2 [unit]
+        return CommandValidator.argRange(4, 5).validate(context);
     }
 
     @Override
@@ -28,15 +39,30 @@ public class GeoDistCommand extends ReadCommand {
         final String key = context.getKey();
         final String member1 = context.getArg(2);
         final String member2 = context.getArg(3);
-        final String unitStr = context.getArgCount() >= 5 ? context.getArg(4) : "m";
+        
+        // Use default unit if not specified
+        final String unitString = context.getArgCount() >= 5 ? context.getArg(4) : DEFAULT_UNIT;
 
-        final GeoUtils.GEO_UNIT unit = GeoUtils.parseUnitOrNull(unitStr);
-        if (unit == null)
-            return CommandResult.success(ResponseBuilder.bulkString(null));
+        // Parse and validate the unit
+        final GeoUtils.GeoUnit unit = GeoUtils.GeoUnit.fromString(unitString);
+        if (unit == null) {
+            return CommandResult.error("Invalid unit: " + unitString);
+        }
 
-        final Double dist = storage.geoDist(key, member1, member2, unit);
-        return CommandResult.success(dist == null
-                ? ResponseBuilder.bulkString(null)
-                : ResponseBuilder.bulkString(String.format("%.6f", dist)));
+        try {
+            // Calculate distance between the two members
+            final Double distance = storage.geoDist(key, member1, member2, unit);
+            
+            if (distance == null) {
+                // One or both members don't exist
+                return CommandResult.success(ResponseBuilder.bulkString(null));
+            }
+            
+            // Format distance with appropriate precision
+            return CommandResult.success(ResponseBuilder.bulkString(String.format("%.6f", distance)));
+            
+        } catch (final IllegalArgumentException e) {
+            return CommandResult.error("Error calculating distance: " + e.getMessage());
+        }
     }
 }
