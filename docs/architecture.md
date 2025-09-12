@@ -70,6 +70,7 @@ commands/
 │   ├── strings/             # String operations
 │   ├── lists/               # List operations
 │   ├── sortedsets/          # Sorted set operations
+│   ├── geo/                 # Geospatial operations
 │   ├── streams/             # Stream operations
 │   ├── pubsub/              # Pub/Sub operations
 │   ├── transaction/         # Transaction operations
@@ -98,6 +99,7 @@ commands/
 - `ListRepository` - List operations with QuickList
 - `StreamRepository` - Stream operations with time-series data
 - `ZSetRepository` - Sorted set operations with QuickZSet
+- `GeoRepository` - Geospatial operations using sorted sets with geohash encoding
 
 **Custom Data Structures:**
 - `QuickList` - Memory-efficient doubly-linked list

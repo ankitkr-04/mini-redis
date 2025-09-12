@@ -6,7 +6,7 @@ This document provides a comprehensive reference for all Redis commands implemen
 
 Based on the actual codebase, the following commands are implemented:
 
-### ✅ Implemented Commands (25 Core Commands)
+### ✅ Implemented Commands (29 Core Commands)
 
 **🔤 String Operations (4 commands):**
 - `GET` - Get string value  
@@ -28,6 +28,12 @@ Based on the actual codebase, the following commands are implemented:
 - `ZRANK` - Get member rank
 - `ZREM` - Remove members
 - `ZSCORE` - Get member score
+
+**🗺️ Geospatial Operations (4 commands):**
+- `GEOADD` - Add geospatial locations
+- `GEODIST` - Calculate distance between locations
+- `GEOPOS` - Get coordinates of locations
+- `GEOSEARCH` - Search locations within radius
 
 **🌊 Stream Operations (3 commands):**
 - `XADD` - Add stream entry
@@ -281,6 +287,73 @@ redis-cli ZADD leaderboard 100 "alice" 200 "bob" 150 "charlie"
 redis-cli ZREM leaderboard "alice" "bob"
 # Returns: 2
 ```
+
+---
+
+### 🗺️ Geospatial Commands
+
+#### GEOADD
+**Syntax:** `GEOADD key longitude latitude member [longitude latitude member ...]`  
+**Description:** Add one or more geospatial items with coordinates to a sorted set  
+**Returns:** Number of elements added to the set  
+**Example:**
+```bash
+redis-cli GEOADD cities 13.361389 38.115556 Palermo 15.087269 37.502669 Catania
+# Returns: 2
+redis-cli GEOADD cities -122.419416 37.774929 "San Francisco"
+# Returns: 1
+```
+
+#### GEODIST
+**Syntax:** `GEODIST key member1 member2 [unit]`  
+**Description:** Calculate the distance between two geospatial members  
+**Units:** `m` (meters), `km` (kilometers), `mi` (miles), `ft` (feet)  
+**Returns:** Distance as a string, or null if one of the members is missing  
+**Example:**
+```bash
+redis-cli GEOADD cities 13.361389 38.115556 Palermo 15.087269 37.502669 Catania
+redis-cli GEODIST cities Palermo Catania km
+# Returns: "166.227564"
+redis-cli GEODIST cities Palermo Catania mi
+# Returns: "103.318677"
+```
+
+#### GEOPOS
+**Syntax:** `GEOPOS key member [member ...]`  
+**Description:** Get longitude and latitude coordinates for geospatial members  
+**Returns:** Array of coordinate pairs, or null for missing members  
+**Example:**
+```bash
+redis-cli GEOADD cities 13.361389 38.115556 Palermo 15.087269 37.502669 Catania
+redis-cli GEOPOS cities Palermo Catania
+# Returns:
+# 1) 1) "13.361388000000005"
+#    2) "38.115556"
+# 2) 1) "15.08726999999999"
+#    2) "37.502668"
+```
+
+#### GEOSEARCH
+**Syntax:** `GEOSEARCH key [FROMMEMBER member | FROMLONLAT longitude latitude] BYRADIUS radius unit`  
+**Description:** Search for members within a radius from a point or member  
+**Returns:** Array of matching members within the specified radius  
+**Example:**
+```bash
+redis-cli GEOADD cities 13.361389 38.115556 Palermo 15.087269 37.502669 Catania
+# Search from a member
+redis-cli GEOSEARCH cities FROMMEMBER Palermo BYRADIUS 200 km
+# Returns: 1) "Catania"  2) "Palermo"
+
+# Search from coordinates
+redis-cli GEOSEARCH cities FROMLONLAT 14 37.5 BYRADIUS 200 km
+# Returns: 1) "Catania"  2) "Palermo"
+```
+
+**Notes on Geospatial Commands:**
+- Geospatial data is stored in sorted sets using geohash encoding
+- Coordinates must be valid: longitude [-180, 180], latitude [-85.05112878, 85.05112878]
+- Distance calculations use the Haversine formula for accuracy
+- All geospatial commands are compatible with regular sorted set operations
 
 ---
 

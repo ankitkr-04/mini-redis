@@ -49,13 +49,14 @@ Optional:
 
 **📋 Full Command Reference:** See [Run Tool Guide](docs/run-tool-guide.md)
 
-## 📊 Supported Redis Commands (25+)
+## 📊 Supported Redis Commands (29+)
 
 ### Core Data Types
 - **🔤 Strings**: `GET`, `SET`, `INCR`, `DECR`
 - **📝 Lists**: `LPUSH`, `RPUSH`, `LPOP`, `RPOP`, `LLEN`, `LRANGE`, `BLPOP`, `BRPOP`
 - **🎯 Sorted Sets**: `ZADD`, `ZRANGE`, `ZRANK`, `ZSCORE`, `ZCARD`, `ZREM`
 - **🌊 Streams**: `XADD`, `XRANGE`, `XREAD`
+- **🗺️ Geospatial**: `GEOADD`, `GEODIST`, `GEOPOS`, `GEOSEARCH`
 
 ### Advanced Features
 - **📡 Pub/Sub**: `PUBLISH`, `SUBSCRIBE`, `UNSUBSCRIBE`, `PSUBSCRIBE`, `PUNSUBSCRIBE`
@@ -117,6 +118,23 @@ redis-cli MULTI
 redis-cli SET account:a 100
 redis-cli SET account:b 50
 redis-cli EXEC
+```
+
+### Geospatial Operations
+```bash
+# Add locations to a geospatial set
+redis-cli GEOADD cities 13.361389 38.115556 Palermo 15.087269 37.502669 Catania
+
+# Calculate distance between cities
+redis-cli GEODIST cities Palermo Catania km
+# Returns: "166.227564"
+
+# Find cities within radius
+redis-cli GEOSEARCH cities FROMMEMBER Palermo BYRADIUS 200 km
+# Returns: 1) "Catania"  2) "Palermo"
+
+# Get coordinates of cities
+redis-cli GEOPOS cities Palermo Catania
 ```
 
 ## 📊 Monitoring
