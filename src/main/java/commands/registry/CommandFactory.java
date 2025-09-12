@@ -10,6 +10,10 @@ import commands.impl.config.ConfigCommand;
 import commands.impl.config.FlushAllCommand;
 import commands.impl.config.InfoCommand;
 import commands.impl.config.MetricsCommand;
+import commands.impl.geo.GeoAddCommand;
+import commands.impl.geo.GeoDistCommand;
+import commands.impl.geo.GeoPosCommand;
+import commands.impl.geo.GeoSearchCommand;
 import commands.impl.keys.KeysComamnd;
 import commands.impl.lists.*;
 import commands.impl.pubsub.PublishCommand;
@@ -71,6 +75,7 @@ public final class CommandFactory {
         registerReplicationCommands(commandRegistry);
         registerPubSubCommands(commandRegistry);
         registerSortedSetCommands(commandRegistry);
+        registerGeospatialCommands(commandRegistry);
 
         LOGGER.debug("All commands registered successfully.");
         return commandRegistry;
@@ -141,5 +146,12 @@ public final class CommandFactory {
         registry.register(new ZRankCommand());
         registry.register(new ZRemCommand());
         registry.register(new ZScoreCommand());
+    }
+
+    private static void registerGeospatialCommands(final CommandRegistry registry) {
+        registry.register(new GeoAddCommand());
+        registry.register(new GeoDistCommand());
+        registry.register(new GeoPosCommand());
+        registry.register(new GeoSearchCommand());
     }
 }
